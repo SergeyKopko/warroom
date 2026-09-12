@@ -8,3 +8,4 @@ vite.config.d.ts
 .env.local
 coverage/
 .DS_Store
+.vercel

@@ -5,7 +5,7 @@ export const robinhood = defineChain({
   name: 'Robinhood Chain',
   nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
   rpcUrls: {
-    default: { http: [import.meta.env.VITE_ROBINHOOD_RPC_URL || 'https://rpc.mainnet.chain.robinhood.com'] },
+    default: { http: ['https://rpc.mainnet.chain.robinhood.com'] },
   },
   blockExplorers: {
     default: { name: 'Robinhood Chain Explorer', url: 'https://robinhoodchain.blockscout.com' },
@@ -13,8 +13,11 @@ export const robinhood = defineChain({
 })
 
 export const CONTRACTS = {
-  game: import.meta.env.VITE_WARROOM_GAME_ADDRESS
-    ? getAddress(import.meta.env.VITE_WARROOM_GAME_ADDRESS)
+  game: __WARROOM_GAME_ADDRESS__
+    ? getAddress(__WARROOM_GAME_ADDRESS__)
+    : zeroAddress,
+  war: __WAR_TOKEN_ADDRESS__
+    ? getAddress(__WAR_TOKEN_ADDRESS__)
     : zeroAddress,
   pltr: getAddress('0x894E1EC2D74FFE5AEF8Dc8A9e84686acCB964F2A'),
   ponsFeeEscrow: getAddress('0xd3AFEB2a57f70eF218Aa82451c51B2fb0416Ac9e'),
@@ -23,7 +26,7 @@ export const CONTRACTS = {
 
 export const EXPLORER = robinhood.blockExplorers.default.url
 export const isConfigured = CONTRACTS.game !== zeroAddress
-export const DEPLOYMENT_BLOCK = BigInt(import.meta.env.VITE_DEPLOYMENT_BLOCK || '0')
+export const isWarConfigured = CONTRACTS.war !== zeroAddress
 
 export const WAR = (value: number | bigint) => BigInt(value) * 10n ** 18n
 export const RANKS = [

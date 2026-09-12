@@ -70,14 +70,7 @@ function relativeTime(timestamp: number, tick: number) {
 }
 
 function CommanderGlyph({ id, size = 24 }: { id: bigint; size?: number }) {
-  const seed = Number(id % 5n)
-  const cells = Array.from({ length: 16 }, (_, index) => {
-    const x = index % 4
-    const y = Math.floor(index / 4)
-    const active = ((index * 7 + seed * 3) % 5) < 2
-    return active ? <rect key={index} x={x * 4 + .6} y={y * 4 + .6} width="2.8" height="2.8" /> : null
-  })
-  return <svg className="cmd-avatar" width={size} height={size} viewBox="0 0 16 16" aria-hidden="true">{cells}</svg>
+  return <span className={`cmd-avatar ${size >= 48 ? 'cmd-avatar-large' : ''}`} style={{ width: size, height: size }} aria-hidden="true"><img src="/commander-nft.png" alt="" /><b>#{id}</b></span>
 }
 
 function Brand({ onClick, compact = false }: { onClick: () => void; compact?: boolean }) {
@@ -255,7 +248,7 @@ export default function App() {
                 {selected ? <CommanderGlyph id={selected.id} size={16} /> : <Wallet size={15} />}
                 <span>{selected ? `#${selected.id}` : state.connected ? shortAddress(state.address) : 'Connect'}</span>
                 {selected && <span className="dim">{RANKS[selected.rank].name}</span>}
-                <span className="dim">·</span><span className="amb num">{shortToken(state.warBalance)} WAR</span>
+                <span className="dim">·</span><span className="amb num">{shortToken(state.walletWarBalance ?? state.warBalance)} WAR</span>
               </button>
               <button className="hbtn" onClick={openMint}>+ Commander</button>
             </div>
@@ -300,7 +293,7 @@ function Landing({ state, selected, tick, onEnter, onDocs, onRoster, onMint }: {
     <div className="landhead">
       <Brand compact onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />
       <div className="land-actions">
-        {selected && <button className="wallet" onClick={onRoster}><CommanderGlyph id={selected.id} size={16} /><span>#{selected.id}</span><span className="dim">{RANKS[selected.rank].name}</span><span className="amb num">{shortToken(state.warBalance)} WAR</span></button>}
+        {state.connected && <button className="wallet" onClick={onRoster}>{selected ? <CommanderGlyph id={selected.id} size={16} /> : <Wallet size={15} />}<span>{selected ? `#${selected.id}` : shortAddress(state.address)}</span>{selected && <span className="dim">{RANKS[selected.rank].name}</span>}<span className="amb num">{shortToken(state.walletWarBalance ?? state.warBalance)} WAR</span></button>}
         <button className="hbtn" onClick={onDocs}>Docs</button>
         {state.connected && <button className="hbtn" onClick={onMint}>+ Commander</button>}
       </div>
@@ -500,13 +493,13 @@ function RewardsPage({ state, selected, tick, onClaim, onClaimAll, onClose, onLa
 }
 
 function ActivityPage({ items, tick }: { items: Activity[]; tick: number }) {
-  return <div className="page"><PageHead title="Activity" copy="Every mint, rocket launch, launcher upgrade, rank change and paid extra shot is emitted by the game contract." tag={<span className="tag tag-fed">LIVE · ON-CHAIN</span>} /><section className="activity-panel"><div className="activity-head"><span>Event</span><span>Details</span><span>Time</span><span>Transaction</span></div>{items.length ? items.map((item) => <ActivityRow item={item} tick={tick} key={item.id} />) : <div className="activity-empty">No activity found in the current RPC window.</div>}</section></div>
+  return <div className="page"><PageHead title="Activity" copy="One shared event history for every visitor. Live updates do not require a connected wallet; connecting one only marks your events." tag={<span className="tag tag-fed">LIVE · GLOBAL</span>} /><section className="activity-panel"><div className="activity-head"><span>Event</span><span>Details</span><span>Time</span><span>Transaction</span></div>{items.length ? items.map((item) => <ActivityRow item={item} tick={tick} key={item.id} />) : <div className="activity-empty">No indexed activity yet.</div>}</section></div>
 }
 
 function ActivityRow({ item, tick }: { item: Activity; tick: number }) {
-  const icons = { launch: Rocket, extra: Zap, mint: PackagePlus, rank: Medal, upgrade: Trophy, reward: CircleDollarSign, round: Target }
+  const icons = { launch: Rocket, extra: Zap, mint: PackagePlus, rank: Medal, upgrade: Trophy, target: Target, fees: CircleDollarSign, reward: CircleDollarSign, round: Shield }
   const Icon = icons[item.kind]
-  return <div className={`activity-row ${item.mine ? 'me' : ''}`}><span className={`activity-icon ${item.kind}`}><Icon size={15} /></span><div><b>{item.title}</b><small>{item.commanderId ? `Commander #${item.commanderId}` : 'Protocol event'}</small></div><div>{item.detail}</div><time>{relativeTime(item.timestamp, tick)}</time>{item.txHash ? <a href={`${EXPLORER}/tx/${item.txHash}`} target="_blank" rel="noreferrer">View tx <ExternalLink size={12} /></a> : <span className="demo-tx">DEMO</span>}</div>
+  return <div className={`activity-row ${item.mine ? 'mine' : ''} ${item.status === 'pending' ? 'pending' : ''}`}><span className={`activity-icon ${item.kind}`}><Icon size={15} /></span><div><b>{item.title}</b><small>{item.status === 'pending' ? 'Pending confirmation' : item.commanderId ? `Commander #${item.commanderId}` : 'Protocol event'}</small></div><div>{item.detail}</div><time>{relativeTime(item.timestamp, tick)}</time>{item.txHash ? <a href={`${EXPLORER}/tx/${item.txHash}`} target="_blank" rel="noreferrer">{item.status === 'pending' ? 'Pending' : 'View tx'} <ExternalLink size={12} /></a> : <span className="demo-tx">DEMO</span>}</div>
 }
 
 function DocsPage() {
@@ -527,7 +520,7 @@ function MintModal({ state, quantity, setQuantity, onClose, onMint }: { state: S
   const maxQuantity = Math.max(1, Math.min(25, remaining))
   const cost = MINT_PRICE * BigInt(quantity)
   const canMint = remaining > 0 && state.connected && state.warBalance >= cost && !state.pendingAction
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="modal mint-modal" role="dialog" aria-modal="true" aria-labelledby="mint-title"><div className="modal-head"><div><span className="eyebrow">ERC-721 · MAX 1,200</span><h2 id="mint-title">Mint Commander</h2></div><button onClick={onClose} aria-label="Close"><X size={18} /></button></div><div className="mint-visual"><CommanderGlyph id={BigInt(state.minted + 1)} size={78} /><div><span>Next assignment</span><b>#{String(state.minted + 1).padStart(3, '0')}</b><small>Recruit · Missile Level 1</small></div></div><div className="quantity-row"><span>Quantity</span><div><button onClick={() => setQuantity(Math.max(1, quantity - 1))} disabled={quantity <= 1}>−</button><b>{quantity}</b><button onClick={() => setQuantity(Math.min(maxQuantity, quantity + 1))} disabled={quantity >= maxQuantity}>+</button></div></div><div className="presets">{[1, 2, 5, 10].map((value) => <button className={quantity === value ? 'on' : ''} disabled={value > maxQuantity} onClick={() => setQuantity(value)} key={value}>{value}</button>)}<button disabled={!remaining} onClick={() => setQuantity(maxQuantity)}>MAX</button></div><div className="supply-row"><span>{state.minted.toLocaleString()} / {state.maxSupply.toLocaleString()} minted</span><div className="bar"><i style={{ transform: `scaleX(${state.minted / state.maxSupply})` }} /></div></div><div className="ledger mint-ledger"><div><span>{quantity} × 100,000</span><span>{shortToken(cost)} WAR</span></div><div className="burn"><span>Burned forever</span><span>{shortToken(cost / 2n)} WAR · 50%</span></div><div><span>Protocol treasury</span><span>{shortToken(cost / 2n)} WAR · 50%</span></div></div><button className={`btn btn-lg btn-block ${canMint ? 'btn-amber' : ''}`} disabled={!canMint} onClick={() => void onMint()}>{remaining <= 0 ? 'Sold out' : state.warBalance < cost ? 'Not enough WAR' : `Mint ${quantity} Commander${quantity > 1 ? 's' : ''}`}</button><p className="modal-note">Rank, launcher level, hits and damage live on the NFT and move with it when transferred.</p></section></div>
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="modal mint-modal" role="dialog" aria-modal="true" aria-labelledby="mint-title"><div className="modal-head"><div><span className="eyebrow">ERC-721 · MAX 1,200</span><h2 id="mint-title">Mint Commander</h2></div><button onClick={onClose} aria-label="Close"><X size={18} /></button></div><div className="mint-visual"><CommanderGlyph id={BigInt(state.minted + 1)} size={78} /><div><span>Next assignment</span><b>#{String(state.minted + 1).padStart(3, '0')}</b><small>Recruit · Missile Level 1</small></div></div><div className="quantity-row"><span>Quantity</span><div><button onClick={() => setQuantity(Math.max(1, quantity - 1))} disabled={quantity <= 1}>−</button><b>{quantity}</b><button onClick={() => setQuantity(Math.min(maxQuantity, quantity + 1))} disabled={quantity >= maxQuantity}>+</button></div></div><div className="presets">{[1, 2, 5, 10].map((value) => <button className={quantity === value ? 'on' : ''} disabled={value > maxQuantity} onClick={() => setQuantity(value)} key={value}>{value}</button>)}<button disabled={!remaining} onClick={() => setQuantity(maxQuantity)}>MAX</button></div><div className="supply-row"><span>{state.minted.toLocaleString()} / {state.maxSupply.toLocaleString()} minted</span><div className="bar"><i style={{ transform: `scaleX(${state.minted / state.maxSupply})` }} /></div></div><div className="ledger mint-ledger">{state.demo && state.walletWarBalance !== undefined && <div><span>On-chain wallet balance</span><span className="fed">{token(state.walletWarBalance)} WAR</span></div>}<div><span>{state.demo ? 'Demo spending balance' : 'Wallet balance'}</span><span className="amb">{token(state.warBalance)} WAR</span></div><div><span>{quantity} × 100,000</span><span>{shortToken(cost)} WAR</span></div><div className="burn"><span>Burned forever</span><span>{shortToken(cost / 2n)} WAR · 50%</span></div><div><span>Protocol treasury</span><span>{shortToken(cost / 2n)} WAR · 50%</span></div></div><button className={`btn btn-lg btn-block ${canMint ? 'btn-amber' : ''}`} disabled={!canMint} onClick={() => void onMint()}>{remaining <= 0 ? 'Sold out' : state.warBalance < cost ? 'Not enough WAR' : `Mint ${quantity} Commander${quantity > 1 ? 's' : ''}`}</button><p className="modal-note">Rank, launcher level, hits and damage live on the NFT and move with it when transferred.</p></section></div>
 }
 
 function RosterModal({ state, selected, onClose, onSelect, onMint }: { state: State; selected?: Commander; onClose: () => void; onSelect: (id: bigint) => void; onMint: () => void }) {

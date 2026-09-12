@@ -93,7 +93,7 @@ contract WarroomGame is ERC721Enumerable, Ownable2Step, ReentrancyGuard {
     error RoundStillOpen();
     error NothingToClaim();
 
-    constructor(address war_, address pltr_, address treasury_, address ponsFeeEscrow_, address admin_)
+    constructor(address war_, address pltr_, address treasury_, address ponsFeeEscrow_, address admin_, string memory baseTokenURI_)
         ERC721("WARROOM Commander", "COMMANDER")
         Ownable(admin_)
     {
@@ -103,6 +103,7 @@ contract WarroomGame is ERC721Enumerable, Ownable2Step, ReentrancyGuard {
         pltr = IERC20(pltr_);
         treasury = treasury_;
         ponsFeeEscrow = IPonsV2FeeEscrow(ponsFeeEscrow_);
+        baseTokenURI = baseTokenURI_;
         currentRoundEndsAt = block.timestamp + ROUND_DURATION;
     }
 

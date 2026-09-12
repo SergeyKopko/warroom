@@ -40,6 +40,8 @@ export const gameAbi = parseAbi([
   'event RankUpgraded(uint256 indexed tokenId, uint8 rank, bool purchased, uint256 paid, uint256 burned)',
   'event RoundClosed(uint256 indexed roundId, uint256 reward, uint256 totalWeight, address indexed closer, uint256 closerFee)',
   'event RewardsClaimed(uint256 indexed tokenId, address indexed owner, uint256 amount)',
+  'event TargetDestroyed(uint256 indexed completedCycle, uint256 indexed newCycle)',
+  'event CreatorFeesPulled(uint256 amount)',
 ])
 
 export const ponsEscrowAbi = parseAbi([

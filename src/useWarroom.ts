@@ -7,14 +7,11 @@ import {
   getContract,
   http,
   maxUint256,
-  parseEventLogs,
   type Address,
-  type Hex,
 } from 'viem'
 import { gameAbi, erc20Abi } from './abi'
 import {
   CONTRACTS,
-  DEPLOYMENT_BLOCK,
   EXTRA_SHOT_PRICE,
   FREE_SHOT_COOLDOWN,
   MINT_PRICE,
@@ -23,13 +20,21 @@ import {
   ROUND_SECONDS,
   WAR,
   isConfigured,
+  isWarConfigured,
   robinhood,
 } from './config'
 import type { Activity, Commander, GameSnapshot, Rank } from './types'
+import { createBrowserActivityTransport } from './activityTransport'
+import { makePendingActivity, mergeActivityEvents, pendingDescriptor } from './shared/activity'
 
 const publicClient = createPublicClient({ chain: robinhood, transport: http() })
 const DAY = 86_400
 const now = () => Math.floor(Date.now() / 1000)
+
+async function readWalletWarBalance(account: Address) {
+  if (!isWarConfigured) return undefined
+  return publicClient.readContract({ address: CONTRACTS.war, abi: erc20Abi, functionName: 'balanceOf', args: [account] })
+}
 
 function newCommander(id: bigint): Commander {
   return {
@@ -50,10 +55,10 @@ function newCommander(id: bigint): Commander {
 }
 
 const initialActivity: Activity[] = [
-  { id: 'a1', kind: 'launch', title: 'Commander #174 launched a rocket', detail: 'Level 3 · hit · 600 damage', commanderId: 174n, timestamp: now() - 22 },
-  { id: 'a2', kind: 'extra', title: 'Commander #091 made an extra shot', detail: '10,000 WAR spent · 5,000 WAR burned', commanderId: 91n, timestamp: now() - 74 },
-  { id: 'a3', kind: 'rank', title: 'Commander #288 reached Major', detail: 'Reward weight increased to 1.9×', commanderId: 288n, timestamp: now() - 133 },
-  { id: 'a4', kind: 'mint', title: 'Commander #342 joined the war', detail: '100,000 WAR spent · 50,000 WAR burned', commanderId: 342n, timestamp: now() - 218 },
+  { id: 'a1', eventName: 'DemoLaunch', status: 'confirmed', confirmed: true, kind: 'launch', title: 'Commander #174 launched a rocket', detail: 'Level 3 · hit · 600 damage', commanderId: '174', timestamp: now() - 22 },
+  { id: 'a2', eventName: 'DemoExtraLaunch', status: 'confirmed', confirmed: true, kind: 'extra', title: 'Commander #091 made an extra shot', detail: '10,000 WAR spent · 5,000 WAR burned', commanderId: '91', timestamp: now() - 74 },
+  { id: 'a3', eventName: 'DemoRank', status: 'confirmed', confirmed: true, kind: 'rank', title: 'Commander #288 reached Major', detail: 'Reward weight increased to 1.9×', commanderId: '288', timestamp: now() - 133 },
+  { id: 'a4', eventName: 'DemoMint', status: 'confirmed', confirmed: true, kind: 'mint', title: 'Commander #342 joined the war', detail: '100,000 WAR spent · 50,000 WAR burned', commanderId: '342', timestamp: now() - 218 },
 ]
 
 const initialSnapshot: GameSnapshot = {
@@ -76,14 +81,25 @@ const initialSnapshot: GameSnapshot = {
   commanders: [],
   claimable: 0n,
   claimableByCommander: {},
-  activity: initialActivity,
+  activity: isConfigured ? [] : initialActivity,
 }
 
 function deserializeDemo(): GameSnapshot | undefined {
   try {
     const raw = localStorage.getItem('warroom-demo-v1')
     if (!raw) return undefined
-    return JSON.parse(raw, (_, value) => typeof value === 'string' && /^bigint:\d+$/.test(value) ? BigInt(value.slice(7)) : value)
+    const saved = JSON.parse(raw, (_, value) => typeof value === 'string' && /^bigint:\d+$/.test(value) ? BigInt(value.slice(7)) : value) as Partial<GameSnapshot>
+    return {
+      ...initialSnapshot,
+      ...saved,
+      round: { ...initialSnapshot.round, ...saved.round },
+      claimableByCommander: { ...initialSnapshot.claimableByCommander, ...saved.claimableByCommander },
+      rankPopulation: Array.isArray(saved.rankPopulation) && saved.rankPopulation.length >= 5
+        ? saved.rankPopulation
+        : initialSnapshot.rankPopulation,
+      commanders: Array.isArray(saved.commanders) ? saved.commanders : initialSnapshot.commanders,
+      activity: Array.isArray(saved.activity) ? saved.activity : initialSnapshot.activity,
+    }
   } catch {
     return undefined
   }
@@ -120,35 +136,6 @@ function messageFromError(error: unknown) {
   return text.split('\n')[0].slice(0, 180)
 }
 
-function activityFromLogs(logs: readonly any[], account?: Address, blockTimes = new Map<string, number>()): Activity[] {
-  return logs.flatMap((log): Activity[] => {
-    const args = log.args as Record<string, any>
-    const common = {
-      id: `${log.transactionHash}-${log.logIndex}`,
-      timestamp: blockTimes.get(String(log.blockNumber)) ?? now(),
-      txHash: log.transactionHash as Hex,
-      commanderId: args.tokenId as bigint | undefined,
-      mine: Boolean(account && args.owner?.toLowerCase() === account.toLowerCase()),
-    }
-    switch (log.eventName) {
-      case 'CommanderMinted':
-        return [{ ...common, kind: 'mint', title: `Commander #${args.tokenId} joined the war`, detail: '100,000 WAR spent · 50,000 WAR burned' }]
-      case 'MissileLaunched':
-        return [{ ...common, kind: args.paid ? 'extra' : 'launch', title: `Commander #${args.tokenId} launched a rocket`, detail: `${args.paid ? 'Extra shot · 10,000 WAR' : 'Free shot'} · ${args.hit ? `hit · ${args.damage} damage` : 'intercepted'}` }]
-      case 'MissileUpgraded':
-        return [{ ...common, kind: 'upgrade', title: `Commander #${args.tokenId} upgraded the launcher`, detail: `Missile level ${args.level} · ${formatUnits(args.burned, 18)} WAR burned` }]
-      case 'RankUpgraded':
-        return [{ ...common, kind: 'rank', title: `Commander #${args.tokenId} reached ${RANKS[Number(args.rank)].name}`, detail: `${args.purchased ? 'Purchased rank' : 'Earned rank'} · ${formatUnits(args.burned, 18)} WAR burned` }]
-      case 'RewardsClaimed':
-        return [{ ...common, kind: 'reward', title: `Commander #${args.tokenId} claimed rewards`, detail: `${Number(formatUnits(args.amount, 18)).toFixed(4)} PLTR` }]
-      case 'RoundClosed':
-        return [{ ...common, kind: 'round', title: `Round #${args.roundId} closed`, detail: `${Number(formatUnits(args.reward, 18)).toFixed(4)} PLTR distributed` }]
-      default:
-        return []
-    }
-  }).reverse()
-}
-
 export function useWarroom() {
   const [state, setState] = useState<GameSnapshot>(() => (!isConfigured ? deserializeDemo() : undefined) || initialSnapshot)
   const accountRef = useRef<Address | undefined>(undefined)
@@ -162,12 +149,24 @@ export function useWarroom() {
     if (state.demo) serializeDemo(state)
   }, [state])
 
-  const addActivity = useCallback((activity: Omit<Activity, 'id' | 'timestamp'>) => {
+  const addActivity = useCallback((activity: Pick<Activity, 'kind' | 'title' | 'detail'> & { commanderId?: bigint | string }) => {
     setState((current) => ({
       ...current,
-      activity: [{ ...activity, id: crypto.randomUUID(), timestamp: now(), mine: true }, ...current.activity].slice(0, 80),
+      activity: mergeActivityEvents(current.activity, [{ ...activity, commanderId: activity.commanderId?.toString(), id: crypto.randomUUID(), eventName: 'DemoEvent', status: 'confirmed', confirmed: true, timestamp: now(), mine: true }], current.address),
     }))
   }, [])
+
+  useEffect(() => {
+    const transport = createBrowserActivityTransport({
+      wallet: state.address,
+      initial: state.activity,
+      emit: (activity) => setState((current) => ({ ...current, activity: mergeActivityEvents(current.activity, activity, current.address) })),
+    })
+    void transport.start()
+    return () => transport.stop()
+    // Reconnect with a new mine marker only when the wallet identity changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.address])
 
   const refresh = useCallback(async (account = accountRef.current) => {
     if (!isConfigured || !account) return
@@ -196,24 +195,15 @@ export function useWarroom() {
         Promise.all(tokenIds.map((id) => game.read.getCommander([id]))),
         Promise.all([0, 1, 2, 3, 4].map((rank) => game.read.rankPopulation([rank]))),
       ])
-      const latestBlock = await publicClient.getBlockNumber()
-      const rpcWindowStart = latestBlock > 1_900n ? latestBlock - 1_900n : 0n
-      const fromBlock = DEPLOYMENT_BLOCK > rpcWindowStart ? DEPLOYMENT_BLOCK : rpcWindowStart
-      const rawLogs = await publicClient.getLogs({ address: CONTRACTS.game, fromBlock, toBlock: 'latest' })
-      const parsed = parseEventLogs({ abi: gameAbi, logs: rawLogs, strict: false })
+      if (isWarConfigured && warAddress.toLowerCase() !== CONTRACTS.war.toLowerCase()) {
+        throw new Error('Configured WAR token does not match the deployed WarroomGame contract.')
+      }
       const commanders = rawCommanders.map((raw, index) => mapCommander(tokenIds[index], raw))
       const roundIds = Array.from({ length: Math.min(48, Number(roundId) - 1) }, (_, index) => BigInt(Number(roundId) - 1 - index))
       const claimableEntries = roundIds.length
         ? await Promise.all(commanders.map(async (commander) => [commander.id.toString(), await game.read.claimableRewards([commander.id, roundIds])] as const))
         : commanders.map((commander) => [commander.id.toString(), 0n] as const)
       const claimableByCommander = Object.fromEntries(claimableEntries)
-      const recentParsed = parsed.slice(-80)
-      const uniqueBlocks = [...new Set(recentParsed.map((log) => log.blockNumber).filter((value): value is bigint => typeof value === 'bigint'))]
-      const blockTimes = new Map<string, number>()
-      await Promise.all(uniqueBlocks.map(async (blockNumber) => {
-        const block = await publicClient.getBlock({ blockNumber })
-        blockTimes.set(blockNumber.toString(), Number(block.timestamp))
-      }))
       setState((current) => ({
         ...current,
         connected: true,
@@ -221,6 +211,7 @@ export function useWarroom() {
         loading: false,
         demo: false,
         warBalance,
+        walletWarBalance: warBalance,
         pltrBalance,
         allowance,
         minted: Number(minted),
@@ -237,7 +228,6 @@ export function useWarroom() {
         selectedId: current.selectedId && commanders.some((c) => c.id === current.selectedId) ? current.selectedId : commanders[0]?.id,
         claimable: claimableByCommander[(current.selectedId && commanders.some((c) => c.id === current.selectedId) ? current.selectedId : commanders[0]?.id)?.toString() ?? ''] ?? 0n,
         claimableByCommander,
-        activity: activityFromLogs(recentParsed, account, blockTimes),
       }))
     } catch (error) {
       setState((current) => ({ ...current, loading: false, error: messageFromError(error) }))
@@ -245,11 +235,11 @@ export function useWarroom() {
   }, [])
 
   const connect = useCallback(async () => {
-    if (!isConfigured) {
-      setState((current) => ({ ...current, connected: true, address: '0xDEmo00000000000000000000000000000000bEEF' as Address }))
-      return
-    }
     if (!window.ethereum) {
+      if (!isConfigured) {
+        setState((current) => ({ ...current, connected: true, address: '0xDEmo00000000000000000000000000000000bEEF' as Address }))
+        return
+      }
       setState((current) => ({ ...current, error: 'Install Robinhood Wallet, MetaMask or another EVM wallet to continue.' }))
       return
     }
@@ -266,7 +256,11 @@ export function useWarroom() {
         }
       }
       accountRef.current = account
-      await refresh(account)
+      if (isConfigured) await refresh(account)
+      else {
+        const walletWarBalance = await readWalletWarBalance(account)
+        setState((current) => ({ ...current, connected: true, address: account, walletWarBalance, error: undefined }))
+      }
     } catch (error) {
       setState((current) => ({ ...current, error: messageFromError(error) }))
     }
@@ -285,6 +279,15 @@ export function useWarroom() {
     setState((current) => ({ ...current, pendingAction: label, error: undefined }))
     try {
       const wallet = createWalletClient({ account, chain: robinhood, transport: custom(window.ethereum) })
+      const chainId = await wallet.getChainId()
+      if (chainId !== robinhood.id) {
+        try {
+          await wallet.switchChain({ id: robinhood.id })
+        } catch {
+          await wallet.addChain({ chain: robinhood })
+          await wallet.switchChain({ id: robinhood.id })
+        }
+      }
       if (spend > state.allowance) {
         const warAddress = await publicClient.readContract({ address: CONTRACTS.game, abi: gameAbi, functionName: 'war' })
         const approval = await wallet.writeContract({ address: warAddress, abi: erc20Abi, functionName: 'approve', args: [CONTRACTS.game, maxUint256] })
@@ -292,6 +295,9 @@ export function useWarroom() {
       }
       const { request } = await publicClient.simulateContract({ address: CONTRACTS.game, abi: gameAbi, functionName: functionName as any, args: args as any, account })
       const hash = await wallet.writeContract(request)
+      const descriptor = pendingDescriptor(functionName, args)
+      const pending = makePendingActivity({ txHash: hash, ...descriptor, actor: account })
+      setState((current) => ({ ...current, activity: mergeActivityEvents(current.activity, [pending], account) }))
       await publicClient.waitForTransactionReceipt({ hash })
       await refresh(account)
     } catch (error) {
@@ -429,17 +435,27 @@ export function useWarroom() {
   }), [addActivity, connect, runDemo, selected, state, write])
 
   useEffect(() => {
-    if (!isConfigured || !window.ethereum) return
+    if (!window.ethereum) return
     const provider = window.ethereum
+    let disposed = false
     const onAccounts = (accounts: unknown) => {
       const next = Array.isArray(accounts) ? accounts[0] as Address | undefined : undefined
       accountRef.current = next
-      if (next) refresh(next)
-      else setState((current) => ({ ...current, connected: false, address: undefined, commanders: [] }))
+      if (next && isConfigured) refresh(next)
+      else if (next) void readWalletWarBalance(next).then((walletWarBalance) => {
+        if (!disposed && accountRef.current === next) setState((current) => ({ ...current, connected: true, address: next, walletWarBalance }))
+      }).catch(() => undefined)
+      else setState((current) => ({ ...current, connected: false, address: undefined, walletWarBalance: undefined, commanders: [] }))
     }
     provider.on?.('accountsChanged', onAccounts)
     provider.on?.('chainChanged', () => window.location.reload())
-    return () => provider.removeListener?.('accountsChanged', onAccounts)
+    void provider.request({ method: 'eth_accounts' }).then((accounts) => {
+      if (!disposed) onAccounts(accounts)
+    }).catch(() => undefined)
+    return () => {
+      disposed = true
+      provider.removeListener?.('accountsChanged', onAccounts)
+    }
   }, [refresh])
 
   useEffect(() => {

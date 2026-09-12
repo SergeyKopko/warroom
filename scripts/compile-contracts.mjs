@@ -19,6 +19,7 @@ const input = {
   sources: { [entry]: { content: fs.readFileSync(path.join(root, entry), 'utf8') } },
   settings: {
     optimizer: { enabled: true, runs: 200 },
+    evmVersion: 'cancun',
     outputSelection: { '*': { '*': ['abi', 'evm.bytecode.object', 'evm.deployedBytecode.object'] } },
   },
 }

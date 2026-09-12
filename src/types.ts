@@ -18,18 +18,9 @@ export type Commander = {
   activeRound: number
 }
 
-export type ActivityKind = 'launch' | 'mint' | 'rank' | 'upgrade' | 'extra' | 'reward' | 'round'
-
-export type Activity = {
-  id: string
-  kind: ActivityKind
-  title: string
-  detail: string
-  commanderId?: bigint
-  timestamp: number
-  txHash?: `0x${string}`
-  mine?: boolean
-}
+import type { ActivityEvent } from './shared/activity'
+export type Activity = ActivityEvent
+export type { ActivityKind } from './shared/activity'
 
 export type Round = {
   id: number
@@ -47,6 +38,7 @@ export type GameSnapshot = {
   pendingAction?: string
   error?: string
   warBalance: bigint
+  walletWarBalance?: bigint
   pltrBalance: bigint
   allowance: bigint
   minted: number

@@ -5,26 +5,41 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:full": "vercel dev",
+    "db:migrate": "node --env-file=.env scripts/migrate.mjs",
+    "indexer": "tsx src/server/indexer/run.ts",
     "build": "tsc -b && vite build",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
     "preview": "vite preview",
     "contracts:build": "node scripts/compile-contracts.mjs",
-    "contracts:deploy": "node --env-file=.env scripts/deploy.mjs",
-    "check": "npm run contracts:build && npm run build"
+    "contracts:test": "vitest run tests/contracts.test.ts",
+    "token:verify": "node --env-file=.env scripts/verify-war-token.mjs",
+    "check": "pnpm contracts:build && pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
-    "@openzeppelin/contracts": "^5.4.0",
+    "@neondatabase/serverless": "^1.0.2",
+    "@openzeppelin/contracts": "5.4.0",
+    "@upstash/ratelimit": "^2.0.7",
+    "@upstash/redis": "^1.35.8",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "viem": "^2.40.0"
   },
   "devDependencies": {
+    "@foundry-rs/anvil": "^1.7.1",
+    "@types/node": "^22.10.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@vercel/node": "^5.3.24",
     "@vitejs/plugin-react": "^4.3.4",
     "solc": "^0.8.28",
+    "tsx": "^4.19.2",
     "typescript": "~5.7.2",
-    "vite": "^6.0.5"
+    "vercel": "^59.16.0",
+    "vite": "^6.0.5",
+    "vitest": "^3.2.4"
   },
   "packageManager": "pnpm@10.28.2+sha512.41872f037ad22f7348e3b1debbaf7e867cfd448f2726d9cf74c08f19507c31d2c8e7a11525b983febc2df640b5438dee6023ebb1f84ed43cc2d654d2bc326264"
 }

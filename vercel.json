@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "pnpm build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/deploy", "destination": "/index.html" }
+  ],
+  "functions": {
+    "api/activity.ts": { "maxDuration": 60 },
+    "api/activity/stream.ts": { "maxDuration": 30 },
+    "api/indexer/catch-up.ts": { "maxDuration": 60 },
+    "api/metadata/[tokenId].ts": { "maxDuration": 10 }
+  }
+}
