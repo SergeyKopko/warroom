@@ -13,7 +13,9 @@ React + Solidity implementation of WARROOM for Robinhood Chain.
 - Five-hour PLTR reward rounds. The contract pulls the WAR launch's Pons V2 Creator Fees from Fee Escrow, freezes participation weight on the first launch, and pays the round closer 0.5%.
 - Claimable PLTR is calculated per NFT and per round.
 - React Activity feed decoded from contract events, with automatic polling and explorer links.
+- Accurate event timestamps for the current RPC window and one-transaction PLTR claiming across multiple Commanders.
 - Complete local demo mode when no game address is configured.
+- The supplied v19 tactical interface, motion system, responsive layout and WARROOM brand asset.
 
 ## Run locally
 
@@ -42,6 +44,8 @@ Official mainnet values already configured in the project:
 
 - Do not deploy to mainnet before an independent smart-contract audit.
 - The MVP launch result uses block entropy. Replace it with the chosen production randomness/oracle mechanism before funds are at risk.
+- `enterGeneralTrial()` is the integration point for the final General challenge. The current MVP immediately admits an eligible Colonel after the WAR payment; define the actual trial rules before mainnet.
 - The public Robinhood RPC limits log ranges. The UI polls recent events; use an archive RPC or event indexer/database for permanent global Activity history.
 - Set the NFT metadata base URL after deployment with `setBaseURI()`.
 - PLTR Stock Token availability and transfers can be jurisdiction-restricted.
+- The displayed Creator Fees value is the amount already swept into Pons V2 Fee Escrow. Pons can also have unswept fees on the launch curve or graduated hook; the launch deployer/sweep operator must sweep those before a WARROOM round can claim them.

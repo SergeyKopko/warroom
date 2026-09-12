@@ -23,6 +23,7 @@ export const CONTRACTS = {
 
 export const EXPLORER = robinhood.blockExplorers.default.url
 export const isConfigured = CONTRACTS.game !== zeroAddress
+export const DEPLOYMENT_BLOCK = BigInt(import.meta.env.VITE_DEPLOYMENT_BLOCK || '0')
 
 export const WAR = (value: number | bigint) => BigInt(value) * 10n ** 18n
 export const RANKS = [

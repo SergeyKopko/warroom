@@ -7,4 +7,4 @@ vite.config.d.ts
 .env
 .env.local
 coverage/
-
+.DS_Store

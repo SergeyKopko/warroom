@@ -14,6 +14,7 @@ import {
 import { gameAbi, erc20Abi } from './abi'
 import {
   CONTRACTS,
+  DEPLOYMENT_BLOCK,
   EXTRA_SHOT_PRICE,
   FREE_SHOT_COOLDOWN,
   MINT_PRICE,
@@ -69,10 +70,12 @@ const initialSnapshot: GameSnapshot = {
   targetCycle: 11,
   totalBurned: WAR(38_421_000),
   totalLaunches: 214_800n,
+  rankPopulation: [203, 88, 37, 12, 1],
   creatorFees: 1_482_000_000_000_000_000n,
   round: { id: 47, endsAt: now() + ROUND_SECONDS, reward: 0n, totalWeight: 152_000n, closed: false },
   commanders: [],
   claimable: 0n,
+  claimableByCommander: {},
   activity: initialActivity,
 }
 
@@ -117,12 +120,12 @@ function messageFromError(error: unknown) {
   return text.split('\n')[0].slice(0, 180)
 }
 
-function activityFromLogs(logs: readonly any[], account?: Address): Activity[] {
+function activityFromLogs(logs: readonly any[], account?: Address, blockTimes = new Map<string, number>()): Activity[] {
   return logs.flatMap((log): Activity[] => {
     const args = log.args as Record<string, any>
     const common = {
       id: `${log.transactionHash}-${log.logIndex}`,
-      timestamp: now(),
+      timestamp: blockTimes.get(String(log.blockNumber)) ?? now(),
       txHash: log.transactionHash as Hex,
       commanderId: args.tokenId as bigint | undefined,
       mine: Boolean(account && args.owner?.toLowerCase() === account.toLowerCase()),
@@ -186,20 +189,31 @@ export function useWarroom() {
         game.read.currentRoundWeight(),
         game.read.creatorFeesAvailable(),
       ])
-      const [warBalance, pltrBalance, allowance, rawCommanders] = await Promise.all([
+      const [warBalance, pltrBalance, allowance, rawCommanders, rankPopulationRaw] = await Promise.all([
         publicClient.readContract({ address: warAddress, abi: erc20Abi, functionName: 'balanceOf', args: [account] }),
         publicClient.readContract({ address: CONTRACTS.pltr, abi: erc20Abi, functionName: 'balanceOf', args: [account] }),
         publicClient.readContract({ address: warAddress, abi: erc20Abi, functionName: 'allowance', args: [account, CONTRACTS.game] }),
         Promise.all(tokenIds.map((id) => game.read.getCommander([id]))),
+        Promise.all([0, 1, 2, 3, 4].map((rank) => game.read.rankPopulation([rank]))),
       ])
-      const fromBlock = BigInt(Math.max(0, Number(await publicClient.getBlockNumber()) - 1_900))
+      const latestBlock = await publicClient.getBlockNumber()
+      const rpcWindowStart = latestBlock > 1_900n ? latestBlock - 1_900n : 0n
+      const fromBlock = DEPLOYMENT_BLOCK > rpcWindowStart ? DEPLOYMENT_BLOCK : rpcWindowStart
       const rawLogs = await publicClient.getLogs({ address: CONTRACTS.game, fromBlock, toBlock: 'latest' })
       const parsed = parseEventLogs({ abi: gameAbi, logs: rawLogs, strict: false })
       const commanders = rawCommanders.map((raw, index) => mapCommander(tokenIds[index], raw))
       const roundIds = Array.from({ length: Math.min(48, Number(roundId) - 1) }, (_, index) => BigInt(Number(roundId) - 1 - index))
-      const claimable = commanders.length && roundIds.length
-        ? await game.read.claimableRewards([commanders[0].id, roundIds])
-        : 0n
+      const claimableEntries = roundIds.length
+        ? await Promise.all(commanders.map(async (commander) => [commander.id.toString(), await game.read.claimableRewards([commander.id, roundIds])] as const))
+        : commanders.map((commander) => [commander.id.toString(), 0n] as const)
+      const claimableByCommander = Object.fromEntries(claimableEntries)
+      const recentParsed = parsed.slice(-80)
+      const uniqueBlocks = [...new Set(recentParsed.map((log) => log.blockNumber).filter((value): value is bigint => typeof value === 'bigint'))]
+      const blockTimes = new Map<string, number>()
+      await Promise.all(uniqueBlocks.map(async (blockNumber) => {
+        const block = await publicClient.getBlock({ blockNumber })
+        blockTimes.set(blockNumber.toString(), Number(block.timestamp))
+      }))
       setState((current) => ({
         ...current,
         connected: true,
@@ -216,12 +230,14 @@ export function useWarroom() {
         targetCycle: Number(targetCycle),
         totalBurned,
         totalLaunches,
+        rankPopulation: rankPopulationRaw.map(Number),
         creatorFees: fees,
         round: { id: Number(roundId), endsAt: Number(roundEnds), reward: 0n, totalWeight: roundWeight, closed: now() >= Number(roundEnds) },
         commanders,
         selectedId: current.selectedId && commanders.some((c) => c.id === current.selectedId) ? current.selectedId : commanders[0]?.id,
-        claimable,
-        activity: activityFromLogs(parsed, account),
+        claimable: claimableByCommander[(current.selectedId && commanders.some((c) => c.id === current.selectedId) ? current.selectedId : commanders[0]?.id)?.toString() ?? ''] ?? 0n,
+        claimableByCommander,
+        activity: activityFromLogs(recentParsed, account, blockTimes),
       }))
     } catch (error) {
       setState((current) => ({ ...current, loading: false, error: messageFromError(error) }))
@@ -288,7 +304,7 @@ export function useWarroom() {
 
   const actions = useMemo(() => ({
     connect,
-    select(id: bigint) { setState((current) => ({ ...current, selectedId: id })) },
+    select(id: bigint) { setState((current) => ({ ...current, selectedId: id, claimable: current.claimableByCommander[id.toString()] ?? 0n })) },
     dismissError() { setState((current) => ({ ...current, error: undefined })) },
     resetDemo() { localStorage.removeItem('warroom-demo-v1'); setState(initialSnapshot) },
     async mint(quantity: number) {
@@ -362,7 +378,25 @@ export function useWarroom() {
       if (now() < state.round.endsAt) return
       await runDemo('Closing reward round', () => {
         const fee = state.creatorFees * 5n / 1000n
-        setState((current) => ({ ...current, pltrBalance: current.pltrBalance + fee, creatorFees: 0n, round: { ...current.round, id: current.round.id + 1, endsAt: now() + ROUND_SECONDS, closed: false } }))
+        setState((current) => {
+          const eligible = current.commanders.filter((commander) => commander.activeRound === current.round.id)
+          const totalWeight = eligible.reduce((sum, commander) => sum + RANKS[commander.rank].multiplier, 0n)
+          const reward = current.creatorFees - fee
+          const claimableByCommander = { ...current.claimableByCommander }
+          for (const commander of eligible) {
+            const credit = totalWeight > 0n ? reward * RANKS[commander.rank].multiplier / totalWeight : 0n
+            const key = commander.id.toString()
+            claimableByCommander[key] = (claimableByCommander[key] ?? 0n) + credit
+          }
+          return {
+            ...current,
+            pltrBalance: current.pltrBalance + (totalWeight > 0n ? fee : 0n),
+            creatorFees: 0n,
+            claimableByCommander,
+            claimable: current.selectedId ? claimableByCommander[current.selectedId.toString()] ?? 0n : 0n,
+            round: { ...current.round, id: current.round.id + 1, endsAt: now() + ROUND_SECONDS, closed: false },
+          }
+        })
         addActivity({ kind: 'round', title: `Round #${state.round.id} closed`, detail: `${Number(formatUnits(state.creatorFees - fee, 18)).toFixed(4)} PLTR distributed` })
       })
     },
@@ -372,10 +406,24 @@ export function useWarroom() {
         const ids = Array.from({ length: Math.min(48, state.round.id - 1) }, (_, index) => BigInt(state.round.id - 1 - index))
         return write('Claiming PLTR', 'claimRewards', [selected.id, ids])
       }
-      if (!state.claimable) return
+      const amount = state.claimableByCommander[selected.id.toString()] ?? state.claimable
+      if (!amount) return
       await runDemo('Claiming PLTR', () => {
-        setState((current) => ({ ...current, pltrBalance: current.pltrBalance + current.claimable, claimable: 0n }))
-        addActivity({ kind: 'reward', title: `Commander #${selected.id} claimed rewards`, detail: `${Number(formatUnits(state.claimable, 18)).toFixed(4)} PLTR`, commanderId: selected.id })
+        setState((current) => ({ ...current, pltrBalance: current.pltrBalance + amount, claimable: 0n, claimableByCommander: { ...current.claimableByCommander, [selected.id.toString()]: 0n } }))
+        addActivity({ kind: 'reward', title: `Commander #${selected.id} claimed rewards`, detail: `${Number(formatUnits(amount, 18)).toFixed(4)} PLTR`, commanderId: selected.id })
+      })
+    },
+    async claimAll() {
+      const tokenIds = state.commanders.filter((commander) => (state.claimableByCommander[commander.id.toString()] ?? 0n) > 0n).map((commander) => commander.id)
+      if (!tokenIds.length) return
+      const ids = Array.from({ length: Math.min(48, state.round.id - 1) }, (_, index) => BigInt(state.round.id - 1 - index))
+      if (!state.demo) return write('Claiming all PLTR', 'claimRewardsBatch', [tokenIds, ids])
+      const total = tokenIds.reduce((sum, tokenId) => sum + (state.claimableByCommander[tokenId.toString()] ?? 0n), 0n)
+      await runDemo('Claiming all PLTR', () => {
+        const cleared = { ...state.claimableByCommander }
+        tokenIds.forEach((tokenId) => { cleared[tokenId.toString()] = 0n })
+        setState((current) => ({ ...current, pltrBalance: current.pltrBalance + total, claimable: 0n, claimableByCommander: cleared }))
+        addActivity({ kind: 'reward', title: `${tokenIds.length} Commanders claimed rewards`, detail: `${Number(formatUnits(total, 18)).toFixed(4)} PLTR` })
       })
     },
   }), [addActivity, connect, runDemo, selected, state, write])

@@ -294,7 +294,32 @@ contract WarroomGame is ERC721Enumerable, Ownable2Step, ReentrancyGuard {
 
     function claimRewards(uint256 tokenId, uint256[] calldata roundIds) external nonReentrant {
         _requireTokenOwner(tokenId);
-        uint256 amount;
+        uint256 amount = _consumeClaimable(tokenId, roundIds);
+        if (amount == 0) revert NothingToClaim();
+        reservedRewards -= amount;
+        pltr.safeTransfer(msg.sender, amount);
+        emit RewardsClaimed(tokenId, msg.sender, amount);
+    }
+
+    /// @notice Claims every listed Commander's settled rounds in one transaction.
+    function claimRewardsBatch(uint256[] calldata tokenIds, uint256[] calldata roundIds) external nonReentrant {
+        if (tokenIds.length == 0) revert InvalidQuantity();
+        uint256 totalAmount;
+        for (uint256 i; i < tokenIds.length; ++i) {
+            uint256 tokenId = tokenIds[i];
+            _requireTokenOwner(tokenId);
+            uint256 tokenAmount = _consumeClaimable(tokenId, roundIds);
+            if (tokenAmount > 0) {
+                totalAmount += tokenAmount;
+                emit RewardsClaimed(tokenId, msg.sender, tokenAmount);
+            }
+        }
+        if (totalAmount == 0) revert NothingToClaim();
+        reservedRewards -= totalAmount;
+        pltr.safeTransfer(msg.sender, totalAmount);
+    }
+
+    function _consumeClaimable(uint256 tokenId, uint256[] calldata roundIds) private returns (uint256 amount) {
         for (uint256 i; i < roundIds.length; ++i) {
             uint256 roundId = roundIds[i];
             if (rewardClaimed[roundId][tokenId]) continue;
@@ -304,10 +329,6 @@ contract WarroomGame is ERC721Enumerable, Ownable2Step, ReentrancyGuard {
             rewardClaimed[roundId][tokenId] = true;
             amount += (uint256(r.reward) * weight) / uint256(r.totalWeight);
         }
-        if (amount == 0) revert NothingToClaim();
-        reservedRewards -= amount;
-        pltr.safeTransfer(msg.sender, amount);
-        emit RewardsClaimed(tokenId, msg.sender, amount);
     }
 
     function _spendForCommander(Commander storage c, uint256 amount) internal {

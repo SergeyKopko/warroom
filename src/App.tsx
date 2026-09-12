@@ -1,13 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Activity as ActivityIcon,
-  ArrowUpRight,
+  ArrowRight,
   Check,
-  ChevronDown,
   CircleDollarSign,
-  Crosshair,
   ExternalLink,
-  Gauge,
   LoaderCircle,
   LockKeyhole,
   Medal,
@@ -16,7 +13,6 @@ import {
   Radar,
   Rocket,
   Shield,
-  Sparkles,
   Target,
   Trophy,
   Wallet,
@@ -28,60 +24,83 @@ import { CONTRACTS, EXPLORER, EXTRA_SHOT_PRICE, FREE_SHOT_COOLDOWN, MINT_PRICE, 
 import type { Activity, Commander, Screen } from './types'
 import { useWarroom } from './useWarroom'
 
-const nav: Array<{ id: Screen; label: string; icon: typeof Rocket }> = [
-  { id: 'battle', label: 'Battle', icon: Crosshair },
-  { id: 'arsenal', label: 'Arsenal', icon: Rocket },
-  { id: 'rank', label: 'Rank', icon: Medal },
-  { id: 'rewards', label: 'Rewards', icon: CircleDollarSign },
-  { id: 'activity', label: 'Activity', icon: ActivityIcon },
-  { id: 'docs', label: 'Protocol', icon: Shield },
+type View = Screen | 'landing'
+
+const navigation: Array<{ id: Screen; label: string }> = [
+  { id: 'battle', label: 'Play' },
+  { id: 'arsenal', label: 'Upgrade' },
+  { id: 'rank', label: 'Rank' },
+  { id: 'rewards', label: 'Rewards' },
+  { id: 'activity', label: 'Activity' },
+  { id: 'docs', label: 'Docs' },
 ]
 
-function compact(value: bigint, decimals = 18) {
-  const number = Number(formatUnits(value, decimals))
-  return new Intl.NumberFormat('en-US', { notation: number >= 10_000 ? 'compact' : 'standard', maximumFractionDigits: number < 10 ? 4 : 1 }).format(number)
+const missileNames = ['Field Rocket', 'Cruise Lance', 'Siege Breaker', 'Atlas Strike']
+
+function token(value: bigint, decimals = 18, maximumFractionDigits = 4) {
+  return Number(formatUnits(value, decimals)).toLocaleString('en-US', { maximumFractionDigits })
 }
 
-function full(value: bigint, decimals = 18) {
-  return Number(formatUnits(value, decimals)).toLocaleString('en-US', { maximumFractionDigits: 4 })
+function shortToken(value: bigint) {
+  const number = Number(formatUnits(value, 18))
+  return new Intl.NumberFormat('en-US', {
+    notation: number >= 10_000 ? 'compact' : 'standard',
+    maximumFractionDigits: number < 10 ? 4 : 1,
+  }).format(number)
 }
 
 function shortAddress(address?: string) {
   return address ? `${address.slice(0, 6)}…${address.slice(-4)}` : ''
 }
 
-function timeLeft(unix: number, tick: number) {
+function countdown(unix: number, tick: number) {
   const seconds = Math.max(0, unix - tick)
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = seconds % 60
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const secs = seconds % 60
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
 }
 
 function relativeTime(timestamp: number, tick: number) {
   const diff = Math.max(0, tick - timestamp)
   if (diff < 60) return `${diff}s ago`
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
-  return `${Math.floor(diff / 86400)}d ago`
+  if (diff < 86_400) return `${Math.floor(diff / 3600)}h ago`
+  return `${Math.floor(diff / 86_400)}d ago`
 }
 
-function CommanderGlyph({ id, size = 38 }: { id: bigint; size?: number }) {
-  const seed = Number(id % 7n)
+function CommanderGlyph({ id, size = 24 }: { id: bigint; size?: number }) {
+  const seed = Number(id % 5n)
+  const cells = Array.from({ length: 16 }, (_, index) => {
+    const x = index % 4
+    const y = Math.floor(index / 4)
+    const active = ((index * 7 + seed * 3) % 5) < 2
+    return active ? <rect key={index} x={x * 4 + .6} y={y * 4 + .6} width="2.8" height="2.8" /> : null
+  })
+  return <svg className="cmd-avatar" width={size} height={size} viewBox="0 0 16 16" aria-hidden="true">{cells}</svg>
+}
+
+function Brand({ onClick, compact = false }: { onClick: () => void; compact?: boolean }) {
   return (
-    <span className="commander-glyph" style={{ width: size, height: size }} aria-hidden="true">
-      <span style={{ transform: `rotate(${seed * 45}deg)` }} />
-      <b>{String(id).slice(-2)}</b>
-    </span>
+    <button className={`brand ${compact ? 'landbrand' : ''}`} onClick={onClick} title="Back to the front page">
+      <img src="/warroom-logo.jpg" alt="" />
+      <span className="dot" />
+      <b>WARROOM</b>
+    </button>
   )
 }
 
-function App() {
+export default function App() {
   const { state, selected, actions } = useWarroom()
-  const [screen, setScreen] = useState<Screen>('battle')
+  const [screen, setScreen] = useState<View>(() => {
+    const hash = window.location.hash.slice(1) as View
+    return ['landing', ...navigation.map((item) => item.id)].includes(hash) ? hash : 'landing'
+  })
   const [mobileNav, setMobileNav] = useState(false)
   const [mintOpen, setMintOpen] = useState(false)
+  const [rosterOpen, setRosterOpen] = useState(false)
   const [mintQty, setMintQty] = useState(1)
+  const [connectIntent, setConnectIntent] = useState(false)
   const [tick, setTick] = useState(() => Math.floor(Date.now() / 1000))
 
   useEffect(() => {
@@ -89,320 +108,428 @@ function App() {
     return () => window.clearInterval(timer)
   }, [])
 
-  const openMint = () => {
+  useEffect(() => {
+    const onHistory = () => {
+      const hash = window.location.hash.slice(1) as View
+      if (['landing', ...navigation.map((item) => item.id)].includes(hash)) setScreen(hash)
+    }
+    window.addEventListener('popstate', onHistory)
+    return () => window.removeEventListener('popstate', onHistory)
+  }, [])
+
+  useEffect(() => {
+    const context = document.modelContext
+    if (!context?.registerTool) return
+    const lifecycle = new AbortController()
+    const register = (tool: Parameters<typeof context.registerTool>[0]) => Promise.resolve(context.registerTool(tool, { signal: lifecycle.signal }))
+    void Promise.all([
+      register({
+        name: 'get_warroom_status',
+        title: 'Get WARROOM status',
+        description: 'Read the current target, reward round, wallet and selected Commander state without changing anything.',
+        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+        annotations: { readOnlyHint: true, untrustedContentHint: false },
+        execute: () => ({
+          connected: state.connected,
+          selectedCommander: selected?.id.toString() ?? null,
+          targetCycle: state.targetCycle,
+          targetHp: state.targetHp.toString(),
+          round: state.round.id,
+          roundEndsAt: state.round.endsAt,
+          creatorFeesPltr: token(state.creatorFees),
+          claimablePltr: token(state.claimable),
+        }),
+      }),
+      register({
+        name: 'select_warroom_commander',
+        title: 'Select Commander',
+        description: 'Select one Commander NFT already held by the connected wallet.',
+        inputSchema: { type: 'object', properties: { tokenId: { type: 'string', pattern: '^[0-9]+$' } }, required: ['tokenId'], additionalProperties: false },
+        annotations: { readOnlyHint: false, untrustedContentHint: false },
+        execute: async (input) => {
+          const tokenId = BigInt((input as { tokenId?: string }).tokenId || '')
+          if (!state.commanders.some((commander) => commander.id === tokenId)) throw new Error('This wallet does not hold that Commander.')
+          actions.select(tokenId)
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+          return { selectedCommander: tokenId.toString() }
+        },
+      }),
+      register({
+        name: 'launch_warroom_rocket',
+        title: 'Launch rocket',
+        description: 'Launch a free rocket or spend 10,000 WAR for an extra launch with the selected Commander. This may request a wallet transaction.',
+        inputSchema: { type: 'object', properties: { paid: { type: 'boolean', description: 'True for an extra 10,000 WAR launch; false for the cooldown-based free launch.' } }, required: ['paid'], additionalProperties: false },
+        annotations: { readOnlyHint: false, untrustedContentHint: false },
+        execute: async (input) => {
+          if (!state.connected || !selected) throw new Error('Connect a wallet and select a Commander first.')
+          const paid = Boolean((input as { paid?: boolean }).paid)
+          await actions.launch(paid)
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+          return { submitted: true, commanderId: selected.id.toString(), paid }
+        },
+      }),
+      register({
+        name: 'mint_warroom_commanders',
+        title: 'Mint Commanders',
+        description: 'Mint one to 25 Commander NFTs at 100,000 WAR each. This may request token approval and a wallet transaction.',
+        inputSchema: { type: 'object', properties: { quantity: { type: 'integer', minimum: 1, maximum: 25 } }, required: ['quantity'], additionalProperties: false },
+        annotations: { readOnlyHint: false, untrustedContentHint: false },
+        execute: async (input) => {
+          const quantity = Number((input as { quantity?: number }).quantity)
+          if (!Number.isInteger(quantity) || quantity < 1 || quantity > 25) throw new Error('Quantity must be an integer from 1 to 25.')
+          if (!state.connected) throw new Error('Connect a wallet first.')
+          if (state.minted + quantity > state.maxSupply) throw new Error('Not enough Commanders remain.')
+          await actions.mint(quantity)
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+          return { submitted: true, quantity }
+        },
+      }),
+    ]).catch((error) => {
+      if (!lifecycle.signal.aborted) console.warn('WebMCP registration failed', error)
+    })
+    return () => lifecycle.abort()
+  }, [actions, selected, state])
+
+  useEffect(() => {
+    if (!connectIntent || !state.connected) return
+    setConnectIntent(false)
+    if (state.commanders.length) setScreen('battle')
+    else setMintOpen(true)
+  }, [connectIntent, state.connected, state.commanders.length])
+
+  const enter = () => {
     if (!state.connected) {
+      setConnectIntent(true)
       void actions.connect()
       return
     }
+    if (!state.commanders.length) setMintOpen(true)
+    else setScreen('battle')
+  }
+
+  const openMint = () => {
+    if (!state.connected) {
+      setConnectIntent(true)
+      void actions.connect()
+      return
+    }
+    setMintQty(1)
     setMintOpen(true)
   }
 
-  useEffect(() => {
-    if (state.connected && state.commanders.length === 0) setMintOpen(true)
-  }, [state.connected, state.commanders.length])
+  const go = (next: View) => {
+    setScreen(next)
+    window.history.pushState(null, '', next === 'landing' ? window.location.pathname : `#${next}`)
+    setMobileNav(false)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   const page = (() => {
+    if (screen === 'landing') return null
     switch (screen) {
-      case 'battle': return <Battle state={state} selected={selected} tick={tick} onLaunch={actions.launch} onMint={openMint} onNavigate={setScreen} />
-      case 'arsenal': return <Arsenal state={state} selected={selected} onUpgrade={actions.upgrade} onMint={openMint} />
-      case 'rank': return <RankRoom state={state} selected={selected} onRankUp={actions.rankUp} onMint={openMint} />
-      case 'rewards': return <Rewards state={state} selected={selected} tick={tick} onClaim={actions.claim} onClose={actions.closeRound} onLaunch={() => actions.launch(false)} />
-      case 'activity': return <ActivityFeed items={state.activity} tick={tick} />
-      case 'docs': return <Protocol />
+      case 'battle': return <PlayPage state={state} selected={selected} tick={tick} onLaunch={actions.launch} onMint={openMint} onRoster={() => setRosterOpen(true)} />
+      case 'arsenal': return <UpgradePage state={state} selected={selected} onUpgrade={actions.upgrade} onMint={openMint} />
+      case 'rank': return <RankPage state={state} selected={selected} onRankUp={actions.rankUp} onMint={openMint} />
+      case 'rewards': return <RewardsPage state={state} selected={selected} tick={tick} onClaim={actions.claim} onClaimAll={actions.claimAll} onClose={actions.closeRound} onLaunch={() => actions.launch(false)} onMint={openMint} />
+      case 'activity': return <ActivityPage items={state.activity} tick={tick} />
+      case 'docs': return <DocsPage />
     }
   })()
 
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <button className="mobile-menu" onClick={() => setMobileNav(!mobileNav)} aria-label="Toggle navigation"><Menu size={19} /></button>
-        <button className="brand" onClick={() => setScreen('battle')}><span className="brand-pip" />WARROOM</button>
-        <nav className={mobileNav ? 'nav open' : 'nav'} aria-label="Primary navigation">
-          {nav.map((item) => {
-            const Icon = item.icon
-            return <button key={item.id} className={screen === item.id ? 'active' : ''} onClick={() => { setScreen(item.id); setMobileNav(false) }}><Icon size={15} />{item.label}</button>
-          })}
-        </nav>
-        <div className="round-mini">
-          <span>Round {state.round.id}</span>
-          <b>{timeLeft(state.round.endsAt, tick)}</b>
-        </div>
-        <button className="wallet-button" onClick={() => state.connected ? undefined : void actions.connect()}>
-          <span className={state.connected ? 'network-dot online' : 'network-dot'} />
-          {state.connected ? <><span>{shortAddress(state.address)}</span><b>{compact(state.warBalance)} WAR</b></> : <><Wallet size={15} /><b>Connect wallet</b></>}
-        </button>
-      </header>
-
-      {state.demo && (
-        <div className="demo-ribbon">
-          <span><Sparkles size={14} /> Interactive demo</span>
-          <p>All mechanics work locally. Add the deployed game address to switch automatically to Robinhood Chain.</p>
-          <button onClick={actions.resetDemo}>Reset demo</button>
-        </div>
-      )}
-
-      <div className="workspace">
-        <aside className="commanders-panel">
-          <div className="section-label">Your command</div>
-          {state.commanders.length ? state.commanders.map((commander) => (
-            <button key={commander.id.toString()} className={selected?.id === commander.id ? 'commander-card selected' : 'commander-card'} onClick={() => actions.select(commander.id)}>
-              <CommanderGlyph id={commander.id} />
-              <span><b>Commander #{commander.id.toString().padStart(3, '0')}</b><small>{RANKS[commander.rank].name} · LVL {commander.missileLevel}</small></span>
-              {commander.activeRound === state.round.id && <i title="Active this round" />}
-            </button>
-          )) : (
-            <div className="empty-command">
-              <div className="empty-mark"><Radar size={25} /></div>
-              <b>No Commander yet</b>
-              <p>Mint the NFT that carries your rank and battle history.</p>
+    <div id="app">
+      <a className="skip-link" href="#main-content">Skip to main content</a>
+      {screen === 'landing' ? (
+        <Landing state={state} selected={selected} tick={tick} onEnter={enter} onDocs={() => go('docs')} onRoster={() => setRosterOpen(true)} onMint={openMint} />
+      ) : (
+        <>
+          <header className="topbar">
+            <button className="mobile-menu" onClick={() => setMobileNav((value) => !value)} aria-label="Toggle navigation"><Menu size={18} /></button>
+            <Brand onClick={() => go('landing')} />
+            <nav className={`nav ${mobileNav ? 'open' : ''}`} aria-label="Primary navigation">
+              {navigation.map((item) => <button key={item.id} className={screen === item.id ? 'on' : ''} onClick={() => go(item.id)}>{item.label}</button>)}
+            </nav>
+            <div className="topright">
+              <div className="season-clock"><div className="eyebrow">Round #{state.round.id} closes</div><div className="t">{countdown(state.round.endsAt, tick)}</div></div>
+              <button className="wallet" onClick={() => state.connected ? setRosterOpen(true) : enter()}>
+                {selected ? <CommanderGlyph id={selected.id} size={16} /> : <Wallet size={15} />}
+                <span>{selected ? `#${selected.id}` : state.connected ? shortAddress(state.address) : 'Connect'}</span>
+                {selected && <span className="dim">{RANKS[selected.rank].name}</span>}
+                <span className="dim">·</span><span className="amb num">{shortToken(state.warBalance)} WAR</span>
+              </button>
+              <button className="hbtn" onClick={openMint}>+ Commander</button>
             </div>
-          )}
-          <button className="add-commander" onClick={openMint}><PackagePlus size={16} /> Mint more</button>
-          <div className="chain-card">
-            <span><i className="network-dot online" /> Robinhood Chain</span>
-            <b>4663</b>
-            <a href={`${EXPLORER}/token/${CONTRACTS.pltr}`} target="_blank" rel="noreferrer">Official PLTR <ExternalLink size={12} /></a>
-          </div>
-        </aside>
-
-        <main className="main-content">{page}</main>
-      </div>
-
-      {state.pendingAction && (
-        <div className="transaction-toast"><LoaderCircle className="spin" size={18} /><span><b>{state.pendingAction}</b><small>{state.demo ? 'Simulating transaction…' : 'Confirm in wallet and wait for finality…'}</small></span></div>
-      )}
-      {state.error && (
-        <div className="error-toast"><span><b>Action failed</b><small>{state.error}</small></span><button onClick={actions.dismissError}><X size={16} /></button></div>
+          </header>
+          {state.demo && <div className="classbar"><span>Interactive demo · Robinhood Chain 4663</span><button onClick={actions.resetDemo}>Reset local state</button></div>}
+          <main id="main-content">{page}</main>
+        </>
       )}
 
-      {mintOpen && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setMintOpen(false)}>
-          <section className="mint-modal" role="dialog" aria-modal="true" aria-labelledby="mint-title">
-            <div className="modal-head"><div><span className="section-label">ERC-721 · MAX 1,200</span><h2 id="mint-title">Deploy Commander</h2></div><button onClick={() => setMintOpen(false)} aria-label="Close"><X /></button></div>
-            <div className="mint-visual"><CommanderGlyph id={BigInt(state.minted + 1)} size={84} /><div><span>Next assignment</span><b>#{String(state.minted + 1).padStart(3, '0')}</b><small>Recruit · Missile Level 1</small></div></div>
-            <div className="quantity-row"><span>Quantity</span><div><button onClick={() => setMintQty(Math.max(1, mintQty - 1))}>−</button><b>{mintQty}</b><button onClick={() => setMintQty(Math.min(25, state.maxSupply - state.minted, mintQty + 1))}>+</button></div></div>
-            <div className="burn-ledger">
-              <p><span>Total</span><b>{compact(MINT_PRICE * BigInt(mintQty))} WAR</b></p>
-              <p className="burn"><span>Burned forever</span><b>{compact(MINT_PRICE * BigInt(mintQty) / 2n)} WAR · 50%</b></p>
-              <p><span>Protocol treasury</span><b>{compact(MINT_PRICE * BigInt(mintQty) / 2n)} WAR · 50%</b></p>
-            </div>
-            <button className="primary-action" disabled={!state.connected || state.warBalance < MINT_PRICE * BigInt(mintQty) || Boolean(state.pendingAction)} onClick={async () => { await actions.mint(mintQty); setMintOpen(false); setMintQty(1) }}>
-              {!state.connected ? 'Connect wallet first' : state.warBalance < MINT_PRICE * BigInt(mintQty) ? 'Not enough WAR' : `Mint ${mintQty} Commander${mintQty > 1 ? 's' : ''}`}
-              <ArrowUpRight size={18} />
-            </button>
-            <p className="modal-note">Rank, upgrades and battle progress live on the NFT and move with it when transferred.</p>
-          </section>
-        </div>
-      )}
+      {state.pendingAction && <div className="transaction-toast" role="status" aria-live="polite"><LoaderCircle className="spin" size={18} /><span><b>{state.pendingAction}</b><small>{state.demo ? 'Simulating transaction…' : 'Confirm in wallet and wait for finality…'}</small></span></div>}
+      {state.error && <div className="error-toast" role="alert"><span><b>Action failed</b><small>{state.error}</small></span><button onClick={actions.dismissError} aria-label="Dismiss error"><X size={16} /></button></div>}
+
+      {mintOpen && <MintModal state={state} quantity={mintQty} setQuantity={setMintQty} onClose={() => setMintOpen(false)} onMint={async () => {
+        try {
+          await actions.mint(mintQty)
+          setMintOpen(false)
+          setMintQty(1)
+          setScreen('battle')
+        } catch {
+          // The transaction error is surfaced by the shared toast.
+        }
+      }} />}
+
+      {rosterOpen && <RosterModal state={state} selected={selected} onClose={() => setRosterOpen(false)} onSelect={(id) => { actions.select(id); setRosterOpen(false) }} onMint={() => { setRosterOpen(false); openMint() }} />}
     </div>
   )
 }
 
-type PageProps = {
-  state: ReturnType<typeof useWarroom>['state']
-  selected?: Commander
+type State = ReturnType<typeof useWarroom>['state']
+
+function Landing({ state, selected, tick, onEnter, onDocs, onRoster, onMint }: { state: State; selected?: Commander; tick: number; onEnter: () => void; onDocs: () => void; onRoster: () => void; onMint: () => void }) {
+  const ticker = [
+    ['Active commanders', state.round.totalWeight.toLocaleString()],
+    ['Launches', state.totalLaunches.toLocaleString()],
+    ['WAR burned', shortToken(state.totalBurned)],
+    ['Creator Fees', `${token(state.creatorFees)} PLTR`],
+    ['General seats', `${state.rankPopulation[4] || 0} / 10`],
+    ['Commanders minted', `${state.minted.toLocaleString()} / ${state.maxSupply.toLocaleString()}`],
+  ]
+  return <>
+    <div className="classbar"><span>Warroom · Robinhood Chain · chain 4663 · rewards in tokenized PLTR</span><span>{state.demo ? 'Interactive demo build' : `Round #${state.round.id} · ${countdown(state.round.endsAt, tick)}`}</span></div>
+    <div className="landhead">
+      <Brand compact onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />
+      <div className="land-actions">
+        {selected && <button className="wallet" onClick={onRoster}><CommanderGlyph id={selected.id} size={16} /><span>#{selected.id}</span><span className="dim">{RANKS[selected.rank].name}</span><span className="amb num">{shortToken(state.warBalance)} WAR</span></button>}
+        <button className="hbtn" onClick={onDocs}>Docs</button>
+        {state.connected && <button className="hbtn" onClick={onMint}>+ Commander</button>}
+      </div>
+    </div>
+    <main id="main-content">
+      <section className="hero">
+        <div className="hero-in">
+          <div className="eyebrow">Strategic operations interface</div>
+          <h1>WAR<span>ROOM</span></h1>
+          <p className="sub">Spend WAR to play. Earn PLTR as rewards.</p>
+          <p className="hero-copy">One target, twelve hundred Commanders and ten General seats. Every upgrade burns WAR; every five-hour round distributes Creator Fees in tokenized PLTR.</p>
+          <div className="cta">
+            <button className="btn btn-lg btn-amber" onClick={onEnter}>{selected ? 'Enter Warroom' : state.connected ? 'Mint a Commander' : 'Connect wallet'}</button>
+            <button className="btn btn-lg" onClick={onDocs}>Read the docs</button>
+            <span className="eyebrow">Robinhood Chain · injected EVM wallets · 50% of every WAR spend burns</span>
+          </div>
+        </div>
+      </section>
+      <div className="marquee"><div>{[...ticker, ...ticker].map(([key, value], index) => <span key={`${key}-${index}`}>{key} <b>{value}</b><i>·</i></span>)}</div></div>
+      <div className="page landing-page">
+        <EnemyPanel state={state} />
+        <div className="warlayout landing-board">
+          <BattlePlot pulse={0} integrity={Number(state.targetHp * 10_000n / state.targetMaxHp) / 100} />
+          <Feed items={state.activity} tick={tick} />
+        </div>
+        <div className="stepline">
+          {[
+            ['Step 1', 'Mint a Commander', '100,000 WAR, half burned. Progress lives on the NFT.'],
+            ['Step 2', 'Launch', 'One free launch every four hours at the shared target.'],
+            ['Step 3', 'Upgrade and rank up', 'Earn a rank with hits, or buy through Colonel with WAR.'],
+            ['Step 4', 'Collect PLTR', 'Creator Fees settle every five hours and remain claimable.'],
+          ].map(([number, title, copy]) => <div className="st" key={number}><div className="n">{number}</div><div className="t">{title}</div><p>{copy}</p></div>)}
+        </div>
+        <div className="statgrid">
+          {ticker.slice(0, 6).map(([key, value]) => <div className="stat" key={key}><div className="k">{key}</div><div className="v num">{value}</div></div>)}
+        </div>
+        <ProtocolContracts />
+        <div className="notice legal">Reward distributions are protocol AMM fees redistributed between Commander NFTs and settled in tokenized PLTR. They are not dividends and confer no equity or shareholder rights. Nothing here is financial, investment, legal or tax advice.</div>
+      </div>
+    </main>
+  </>
 }
 
-function PageTitle({ eyebrow, title, copy, aside }: { eyebrow: string; title: string; copy: string; aside?: React.ReactNode }) {
-  return <div className="page-title"><div><span className="section-label">{eyebrow}</span><h1>{title}</h1><p>{copy}</p></div>{aside}</div>
+function EnemyPanel({ state }: { state: State }) {
+  const integrity = Number(state.targetHp * 10_000n / state.targetMaxHp) / 100
+  return <section className="resil" aria-label={`Enemy integrity ${integrity.toFixed(1)} percent`}>
+    <div className="side"><div className="lbl"><b className="fed">COMMAND NETWORK</b><span>{state.round.totalWeight.toLocaleString()} WEIGHT ONLINE</span></div><div className="rtrack"><i className="rfill f" style={{ width: `${Math.max(8, 100 - integrity)}%` }} /></div></div>
+    <div className="mid"><span className="v">CYCLE</span><span className="k">#{state.targetCycle}</span></div>
+    <div className="side r"><div className="lbl"><b className="rep">GLOBAL TARGET</b><span>{state.targetHp.toLocaleString()} HP</span></div><div className="rtrack"><i className="rfill r" style={{ width: `${integrity}%` }} /></div></div>
+  </section>
+}
+
+function BattlePlot({ pulse, integrity }: { pulse: number; integrity: number }) {
+  return <div className="plotwrap">
+    <svg id="plot" viewBox="0 0 980 520" role="img" aria-label={`Live target map. Enemy integrity ${integrity.toFixed(1)} percent.`}>
+      <defs>
+        <pattern id="war-grid" width="36" height="36" patternUnits="userSpaceOnUse"><path d="M36 0H0V36" fill="none" stroke="#273038" strokeWidth="1" /></pattern>
+        <radialGradient id="target-glow"><stop stopColor="#F04A2E" stopOpacity=".24" /><stop offset="1" stopColor="#F04A2E" stopOpacity="0" /></radialGradient>
+        <filter id="soft-glow"><feGaussianBlur stdDeviation="5" /></filter>
+      </defs>
+      <rect width="980" height="520" fill="#0E1216" />
+      <rect width="980" height="520" fill="url(#war-grid)" opacity=".58" />
+      {[90, 155, 225].map((radius) => <circle key={radius} cx="548" cy="258" r={radius} fill="none" stroke="#333B42" strokeDasharray="8 10" />)}
+      <path d="M548 97l117 63 30 116-72 100-137 8-91-91 24-132z" fill="#27120f" stroke="#F04A2E" strokeWidth="2" />
+      <circle cx="548" cy="258" r="176" fill="url(#target-glow)" />
+      <circle className="target-pulse" cx="548" cy="258" r="29" fill="none" stroke="#F04A2E" />
+      <path d="M510 258h76M548 220v76" stroke="#ff856f" />
+      <text x="548" y="72" textAnchor="middle" fill="#F04A2E" fontSize="12" letterSpacing="4">GLOBAL TARGET</text>
+      {[[120,100],[180,420],[820,112],[855,405],[322,315]].map(([x, y], index) => <g className={`unit-dot unit-${index}`} key={index}><circle cx={x} cy={y} r="8" fill="#0A2E4E" stroke="#2E9BFF" /><circle cx={x} cy={y} r="2" fill="#9ed2ff" /></g>)}
+      <g className="ambient-flight"><path d="M180 420Q320 70 520 235" fill="none" stroke="#2E9BFF" strokeWidth="1.5" strokeDasharray="6 8" /><circle cx="180" cy="420" r="4" fill="#2E9BFF" /></g>
+      {pulse > 0 && <g className="rocket-flight" key={pulse}><path d="M120 430Q330 40 535 240" fill="none" stroke="#FFB020" strokeWidth="2" strokeDasharray="7 7" /><circle className="rocket-dot" cx="120" cy="430" r="6" fill="#FFB020" /><circle className="impact-ring" cx="548" cy="258" r="18" fill="none" stroke="#FFB020" /></g>}
+    </svg>
+    <div className="plot-ov" />
+    <span className="plot-corner pc-tl">LIVE PLOT · FICTIONAL TARGET</span>
+    <span className="plot-corner pc-bl">ROBINHOOD CHAIN · BLOCK FINALITY</span>
+    <div className="plot-legend"><span><i className="legend-you" />YOU</span><span><i className="legend-allies" />OTHERS</span><span><i className="legend-target" />ENEMY</span></div>
+  </div>
+}
+
+function Feed({ items, tick }: { items: Activity[]; tick: number }) {
+  return <section className="panel feed-panel"><div className="panel-h"><h3>Activity</h3><span className="eyebrow">Live</span></div><div className="feed">{items.slice(0, 14).map((item) => <div className={`fitem ${item.mine ? 'me' : ''}`} key={item.id}><span className="ts">{relativeTime(item.timestamp, tick)}</span><div className="bd"><b>{item.title}</b><span>{item.detail}</span></div></div>)}</div></section>
 }
 
 function EmptyGate({ onMint }: { onMint: () => void }) {
-  return <div className="empty-gate"><Radar size={40} /><h2>Commander required</h2><p>Mint a Commander to unlock battle actions. The NFT keeps the complete progression record.</p><button className="primary-action" onClick={onMint}>Mint Commander <ArrowUpRight size={17} /></button></div>
+  return <section className="panel empty-gate"><Radar size={40} /><h2>Commander required</h2><p>Mint the NFT that carries your rank, launcher level and battle history.</p><button className="btn btn-lg btn-amber" onClick={onMint}>Mint Commander</button></section>
 }
 
-function Battle({ state, selected, tick, onLaunch, onMint, onNavigate }: PageProps & { tick: number; onLaunch: (paid: boolean) => Promise<void>; onMint: () => void; onNavigate: (screen: Screen) => void }) {
+function PlayPage({ state, selected, tick, onLaunch, onMint, onRoster }: { state: State; selected?: Commander; tick: number; onLaunch: (paid: boolean) => Promise<void>; onMint: () => void; onRoster: () => void }) {
   const [pulse, setPulse] = useState(0)
-  const cooldown = selected ? Math.max(0, selected.lastLaunchAt + FREE_SHOT_COOLDOWN - tick) : 0
-  const today = Math.floor(tick / 86400)
-  const extras = selected?.extraDay === today ? selected.extraCount : 0
-  const hp = Number(state.targetHp * 10_000n / state.targetMaxHp) / 100
+  if (!selected) return <div className="page"><EnemyPanel state={state} /><EmptyGate onMint={onMint} /></div>
+  const missile = MISSILES[selected.missileLevel - 1]
+  const rank = RANKS[selected.rank]
+  const next = selected.rank < 4 ? RANKS[selected.rank + 1] : undefined
+  const cooldown = Math.max(0, selected.lastLaunchAt + FREE_SHOT_COOLDOWN - tick)
+  const today = Math.floor(tick / 86_400)
+  const extras = selected.extraDay === today ? selected.extraCount : 0
+  const integrity = Number(state.targetHp * 10_000n / state.targetMaxHp) / 100
   const fire = async (paid: boolean) => { setPulse((value) => value + 1); await onLaunch(paid) }
-
-  return <>
-    <PageTitle eyebrow="Global operation" title="The common target" copy="Every Commander attacks the same target. At zero integrity, a new cycle begins immediately." aside={<div className="status-chip"><i /> LIVE TARGET · CYCLE {state.targetCycle}</div>} />
-    {!selected ? <EmptyGate onMint={onMint} /> : <>
-      <section className="battle-grid">
-        <div className="target-stage">
-          <div className="stage-corners"><span>GRID 42°21'N</span><span>THREAT / ALPHA</span></div>
-          <svg viewBox="0 0 860 500" role="img" aria-label={`Common target at ${hp.toFixed(1)} percent integrity`}>
-            <defs>
-              <pattern id="grid" width="38" height="38" patternUnits="userSpaceOnUse"><path d="M38 0H0V38" fill="none" stroke="#283139" strokeWidth="1" /></pattern>
-              <radialGradient id="danger"><stop stopColor="#ed4b32" stopOpacity=".25" /><stop offset="1" stopColor="#ed4b32" stopOpacity="0" /></radialGradient>
-            </defs>
-            <rect width="860" height="500" fill="url(#grid)" opacity=".55" />
-            {[90, 150, 215].map((r) => <circle key={r} cx="430" cy="250" r={r} fill="none" stroke="#273038" strokeDasharray="8 10" />)}
-            <circle cx="430" cy="250" r="160" fill="url(#danger)" />
-            <path d="M430 122l92 48 30 99-59 91-112 13-79-73 15-111z" fill="#301713" stroke="#ed4b32" strokeWidth="2" />
-            <path d="M430 165l54 30 18 59-37 54-67 5-42-48 14-61z" fill="none" stroke="#ed4b32" opacity=".75" />
-            <circle cx="430" cy="250" r="28" fill="#ed4b32" opacity=".16" stroke="#ff735c" />
-            <path d="M402 250h56M430 222v56" stroke="#ff735c" />
-            <g className={pulse ? 'rocket-flight' : ''} key={pulse}>
-              <path d="M85 420 Q280 60 410 225" fill="none" stroke="#ffb000" strokeWidth="2" strokeDasharray="7 7" />
-              <circle cx="85" cy="420" r="5" fill="#42a7ff" />
-              <circle className="rocket-dot" cx="85" cy="420" r="5" fill="#ffb000" />
-            </g>
-            {[[105,105],[740,100],[745,405],[130,400]].map(([x,y], i) => <g key={i}><circle cx={x} cy={y} r="8" fill="#102638" stroke="#42a7ff" /><circle cx={x} cy={y} r="2" fill="#42a7ff" /></g>)}
-            <text x="430" y="99" textAnchor="middle" fill="#ed4b32" fontSize="12" letterSpacing="3">GLOBAL TARGET</text>
-          </svg>
-          <div className="integrity-panel"><div><span>Enemy integrity</span><b>{hp.toFixed(1)}%</b></div><div className="integrity-track"><i style={{ width: `${hp}%` }} /></div><small>{state.targetHp.toLocaleString()} / {state.targetMaxHp.toLocaleString()} HP</small></div>
+  const projected = selected.activeRound === state.round.id && state.round.totalWeight > 0n
+    ? state.creatorFees * 9_950n / 10_000n * rank.multiplier / state.round.totalWeight
+    : 0n
+  return <div className="page">
+    <EnemyPanel state={state} />
+    <div className="warlayout">
+      <div>
+        <BattlePlot pulse={pulse} integrity={integrity} />
+        <div className="bigfire">
+          <button className="launch" disabled={cooldown > 0 || Boolean(state.pendingAction)} onClick={() => void fire(false)}>{cooldown ? 'Reloading' : 'Launch'}<span className="cd">{cooldown ? `next launch in ${countdown(selected.lastLaunchAt + FREE_SHOT_COOLDOWN, tick)}` : `Level ${missile.level} · ${missile.damage.toLocaleString()} damage · 70% hit`}</span></button>
+          <button className="btn btn-amber paid-launch" disabled={extras >= 3 || state.warBalance < EXTRA_SHOT_PRICE || Boolean(state.pendingAction)} onClick={() => void fire(true)}>Launch now<span>10,000 WAR · {3 - extras} left today</span></button>
         </div>
-
-        <div className="battle-controls">
-          <div className="selected-commander"><CommanderGlyph id={selected.id} size={48} /><div><span>Active unit</span><b>Commander #{selected.id.toString().padStart(3, '0')}</b><small>{RANKS[selected.rank].name} · Missile LVL {selected.missileLevel}</small></div></div>
-          <div className="weapon-readout"><div><span>Damage / hit</span><b>{MISSILES[selected.missileLevel - 1].damage.toLocaleString()}</b></div><div><span>Accuracy</span><b>70%</b></div><div><span>Round status</span><b className={selected.activeRound === state.round.id ? 'blue' : 'red'}>{selected.activeRound === state.round.id ? 'Active' : 'Standby'}</b></div></div>
-          <button className="launch-button" disabled={cooldown > 0 || Boolean(state.pendingAction)} onClick={() => void fire(false)}><Rocket size={23} /><span>{cooldown ? 'Reloading' : 'Launch rocket'}<small>{cooldown ? timeLeft(selected.lastLaunchAt + FREE_SHOT_COOLDOWN, tick) : 'Free launch ready'}</small></span></button>
-          <button className="extra-button" disabled={extras >= 3 || state.warBalance < EXTRA_SHOT_PRICE || Boolean(state.pendingAction)} onClick={() => void fire(true)}><Zap size={19} /><span>Extra launch<small>10,000 WAR · 50% burns</small></span><b>{3 - extras}/3</b></button>
-          <p className="control-note"><LockKeyhole size={14} /> Every signed launch is recorded on-chain and appears in Activity.</p>
+        <div className="hero-row">
+          <div className="cell"><div className="k">Your missile</div><div className="v">Level {missile.level}</div><div className="s">{missile.damage.toLocaleString()} damage per hit</div></div>
+          <div className="cell"><div className="k">Commander #{selected.id}</div><div className="v">{rank.name}</div><div className="s">{next ? `${selected.hits} / ${next.hits} hits to ${next.name}` : 'top rank'}</div></div>
+          <div className="cell"><div className="k">This round</div><div className="v num">{token(projected)} PLTR</div><div className="s">{selected.activeRound === state.round.id ? `round #${state.round.id} closes in ` : 'launch once to enter · '}{countdown(state.round.endsAt, tick)}</div></div>
+          <div className="cell"><div className="k">Your damage</div><div className="v num">{selected.totalDamage.toLocaleString()}</div><div className="s">{selected.hits} hits of {selected.launches} launches</div></div>
         </div>
-      </section>
-
-      <section className="metric-strip">
-        <div><span>Your hits</span><b>{selected.hits.toLocaleString()}</b><small>{selected.launches} total launches</small></div>
-        <div><span>Your damage</span><b>{selected.totalDamage.toLocaleString()}</b><small>Commander #{selected.id.toString()}</small></div>
-        <div><span>WAR burned</span><b>{compact(selected.warBurned)}</b><small>by this NFT</small></div>
-        <div><span>Reward weight</span><b>{Number(RANKS[selected.rank].multiplier) / 100}×</b><small>{RANKS[selected.rank].name}</small></div>
-        <button onClick={() => onNavigate('activity')}>Open Activity <ArrowUpRight size={16} /></button>
-      </section>
-    </>}
-  </>
-}
-
-function Arsenal({ state, selected, onUpgrade, onMint }: PageProps & { onUpgrade: () => Promise<void>; onMint: () => void }) {
-  return <>
-    <PageTitle eyebrow="Missile systems" title="Arsenal" copy="Hits unlock stronger missiles. Every upgrade spends WAR: 50% is burned and 50% goes to the protocol treasury." />
-    {!selected ? <EmptyGate onMint={onMint} /> : <div className="card-grid">
-      {MISSILES.map((missile) => {
-        const current = selected.missileLevel === missile.level
-        const complete = selected.missileLevel > missile.level
-        const next = selected.missileLevel + 1 === missile.level
-        const can = next && selected.hits >= missile.hits && state.warBalance >= missile.cost
-        return <section className={`upgrade-card ${current ? 'current' : ''} ${complete ? 'complete' : ''}`} key={missile.level}>
-          <div className="upgrade-card-head"><span>LEVEL {String(missile.level).padStart(2, '0')}</span>{current ? <b>CURRENT</b> : complete ? <b><Check size={13} /> COMPLETE</b> : <LockKeyhole size={16} />}</div>
-          <div className="missile-mark"><Rocket size={38 + missile.level * 4} strokeWidth={1.4} /></div>
-          <h2>{['Field Rocket', 'Cruise Lance', 'Siege Breaker', 'Atlas Strike'][missile.level - 1]}</h2>
-          <div className="spec-grid"><p><span>Damage</span><b>{missile.damage.toLocaleString()}</b></p><p><span>Required hits</span><b>{missile.hits || 'Issued'}</b></p></div>
-          <div className="burn-ledger compact"><p><span>Upgrade price</span><b>{missile.cost ? `${compact(missile.cost)} WAR` : 'Included'}</b></p>{missile.cost > 0n && <p className="burn"><span>Burned</span><b>{compact(missile.cost / 2n)} WAR</b></p>}</div>
-          {current ? <button className="card-action" disabled>Equipped</button> : complete ? <button className="card-action" disabled>Completed</button> : <button className="card-action" disabled={!can || Boolean(state.pendingAction)} onClick={() => void onUpgrade()}>{!next ? 'Upgrade in order' : selected.hits < missile.hits ? `${missile.hits - selected.hits} more hits` : state.warBalance < missile.cost ? 'Not enough WAR' : 'Upgrade missile'}<ArrowUpRight size={16} /></button>}
-        </section>
-      })}
-    </div>}
-  </>
-}
-
-function RankRoom({ state, selected, onRankUp, onMint }: PageProps & { onRankUp: (purchased: boolean) => Promise<void>; onMint: () => void }) {
-  const [mode, setMode] = useState<'earn' | 'buy'>('buy')
-  const nextRank = selected && selected.rank < 4 ? RANKS[selected.rank + 1] : undefined
-  const ageDays = selected ? Math.floor((Date.now() / 1000 - selected.mintedAt) / 86400) : 0
-  const progressReady = Boolean(selected && nextRank && selected.hits >= nextRank.hits && ageDays >= nextRank.days)
-
-  return <>
-    <PageTitle eyebrow="Command hierarchy" title="Rank" copy="Rank controls your share of PLTR rewards. Captain through Colonel can be purchased; General is reached only through the trial." aside={selected && <div className="rank-badge"><Medal size={20} /><span>Current rank<b>{RANKS[selected.rank].name}</b></span></div>} />
-    {!selected ? <EmptyGate onMint={onMint} /> : <>
-      <section className="rank-ladder">
-        {RANKS.map((rank, index) => <div key={rank.name} className={`rank-rung ${index === selected.rank ? 'current' : ''} ${index < selected.rank ? 'complete' : ''}`}>
-          <span className="rank-index">0{index + 1}</span>
-          <div><b>{rank.name}</b><small>{index === 4 ? 'Trial only' : index === 0 ? 'Entry rank' : `${rank.hits} hits · ${rank.days} day${rank.days > 1 ? 's' : ''}`}</small></div>
-          <p><span>Seats</span><b>{rank.seats || '∞'}</b></p>
-          <p><span>Reward weight</span><b>{Number(rank.multiplier) / 100}×</b></p>
-          <span className="rung-state">{index < selected.rank ? <Check /> : index === selected.rank ? 'YOU' : <LockKeyhole />}</span>
-        </div>)}
-      </section>
-
-      {nextRank && <section className="promotion-panel">
-        <div className="promotion-copy"><span className="section-label">Next promotion</span><h2>{RANKS[selected.rank].name} <ArrowUpRight size={21} /> {nextRank.name}</h2><p>{selected.rank === 3 ? 'General cannot be purchased. A Colonel must enter the protocol trial while one of ten seats is available.' : 'Choose the earned route after meeting the battle requirements, or skip them by purchasing the rank.'}</p></div>
-        {selected.rank < 3 && <div className="mode-switch"><button className={mode === 'buy' ? 'active' : ''} onClick={() => setMode('buy')}>Buy rank</button><button className={mode === 'earn' ? 'active' : ''} onClick={() => setMode('earn')}>Earned route</button></div>}
-        <div className="promotion-cost">
-          <p><span>{selected.rank === 3 ? 'Trial deposit' : mode === 'buy' ? 'Fast promotion' : 'Promotion fee'}</span><b>{compact(selected.rank === 3 ? 800_000n * 10n ** 18n : mode === 'buy' ? nextRank.buy : nextRank.earned)} WAR</b></p>
-          <p className="burn"><span>Burned forever</span><b>50%</b></p>
-          {mode === 'earn' && selected.rank < 3 && <div className="requirements"><span className={selected.hits >= nextRank.hits ? 'met' : ''}><Check size={13} /> {selected.hits}/{nextRank.hits} hits</span><span className={ageDays >= nextRank.days ? 'met' : ''}><Check size={13} /> {ageDays}/{nextRank.days} days</span></div>}
-          <button className="primary-action" disabled={(mode === 'earn' && selected.rank < 3 && !progressReady) || Boolean(state.pendingAction)} onClick={() => void onRankUp(mode === 'buy')}>
-            {selected.rank === 3 ? 'Enter General trial' : mode === 'buy' ? `Buy ${nextRank.name}` : progressReady ? `Claim ${nextRank.name}` : 'Requirements not met'}<ArrowUpRight size={17} />
-          </button>
-        </div>
-      </section>}
-    </>}
-  </>
-}
-
-function Rewards({ state, selected, tick, onClaim, onClose, onLaunch }: PageProps & { tick: number; onClaim: () => Promise<void>; onClose: () => Promise<void>; onLaunch: () => Promise<void> }) {
-  const active = selected?.activeRound === state.round.id
-  const pool = state.creatorFees
-  const fee = pool * 5n / 1000n
-  return <>
-    <PageTitle eyebrow="Pons creator fees" title="Rewards in PLTR" copy="Creator Fees from the WAR/PLTR Pons V2 market are claimed into the game contract and distributed every five hours by rank weight." aside={<div className={`status-chip ${active ? '' : 'warning'}`}><i /> {active ? 'IN ROUND SNAPSHOT' : 'NOT ACTIVE THIS ROUND'}</div>} />
-    <section className="reward-hero">
-      <div className="pltr-orb"><span>PLTR</span><b>R</b></div>
-      <div className="reward-total"><span>Available Creator Fees</span><b>{full(pool)} <small>PLTR</small></b><p>Read from Pons V2 Fee Escrow. Values are never typed into the production interface.</p></div>
-      <div className="round-clock"><span>Round {state.round.id} closes in</span><b>{timeLeft(state.round.endsAt, tick)}</b><small>Any wallet can close it for a 0.5% fee.</small></div>
-    </section>
-
-    <div className="reward-grid">
-      <section className="panel-card">
-        <div className="panel-card-head"><div><span className="section-label">Distribution preview</span><h2>Current round</h2></div><Gauge size={24} /></div>
-        <div className="flow-list">
-          <div><span>01</span><p><b>Pons Creator Fees</b><small>WAR market accrues quote-asset fees in PLTR.</small></p><strong>{full(pool)} PLTR</strong></div>
-          <div><span>02</span><p><b>Keeper incentive</b><small>Paid to the wallet that closes the round.</small></p><strong>−{full(fee)} PLTR</strong></div>
-          <div><span>03</span><p><b>Commander pool</b><small>Split by the frozen weight of active NFTs.</small></p><strong>{full(pool - fee)} PLTR</strong></div>
-        </div>
-        {tick >= state.round.endsAt ? <button className="primary-action" disabled={Boolean(state.pendingAction)} onClick={() => void onClose()}>Close round · earn 0.5% <ArrowUpRight size={17} /></button> : !active ? <button className="primary-action secondary" disabled={!selected || Boolean(state.pendingAction)} onClick={() => void onLaunch()}>Launch once to enter <Rocket size={17} /></button> : <div className="round-ready"><Check size={17} /> Your weight is locked for round {state.round.id}</div>}
-      </section>
-
-      <section className="panel-card claim-card">
-        <div className="panel-card-head"><div><span className="section-label">Commander account</span><h2>Claimable balance</h2></div><Trophy size={24} /></div>
-        <b className="claim-value">{full(state.claimable)} <small>PLTR</small></b>
-        <p>Settled rewards remain claimable until withdrawn. The current NFT owner can claim its credits.</p>
-        <div className="claim-details"><span>Rank weight <b>{selected ? Number(RANKS[selected.rank].multiplier) / 100 : 0}×</b></span><span>Wallet balance <b>{full(state.pltrBalance)} PLTR</b></span></div>
-        <button className="primary-action" disabled={!state.claimable || Boolean(state.pendingAction)} onClick={() => void onClaim()}>Claim PLTR <ArrowUpRight size={17} /></button>
-      </section>
+        <section className="panel commander-summary"><div><span className="eyebrow">Commanders on this wallet</span><b>{state.commanders.length} held</b><p>Every Commander is a separate NFT with its own rank and share of the rewards pool. {state.maxSupply - state.minted} remain unminted.</p></div><div><button className="btn" onClick={onRoster}>Switch commander</button><button className="btn btn-amber" onClick={onMint}>Mint more</button></div></section>
+        <section className="panel operation-panel"><div className="panel-h"><h3>Operation totals</h3><span className="eyebrow">On-chain</span></div><div className="statgrid inline"><div className="stat"><div className="k">All launches</div><div className="v num">{state.totalLaunches.toLocaleString()}</div></div><div className="stat"><div className="k">WAR burned</div><div className="v num">{shortToken(state.totalBurned)}</div></div><div className="stat"><div className="k">Your WAR burned</div><div className="v num">{shortToken(selected.warBurned)}</div></div></div></section>
+      </div>
+      <Feed items={state.activity} tick={tick} />
     </div>
-
-    <section className="source-strip"><Shield size={20} /><div><b>Verifiable source of rewards</b><p>Pons V2 Fee Escrow → WARROOM contract → 5-hour weighted round → Commander claim.</p></div><a href={`${EXPLORER}/address/${CONTRACTS.ponsFeeEscrow}`} target="_blank" rel="noreferrer">Open Fee Escrow <ExternalLink size={14} /></a></section>
-  </>
+  </div>
 }
 
-function ActivityFeed({ items, tick }: { items: Activity[]; tick: number }) {
-  const icons = { launch: Rocket, mint: PackagePlus, rank: Medal, upgrade: Gauge, extra: Zap, reward: CircleDollarSign, round: Trophy }
-  return <>
-    <PageTitle eyebrow="On-chain event log" title="Activity" copy="Mint, launch, rank and extra-shot events are decoded from the WARROOM contract. Recent public-RPC history is shown here." aside={<div className="status-chip"><i /> AUTO REFRESH</div>} />
-    <section className="activity-panel">
-      <div className="activity-head"><span>Event</span><span>Details</span><span>Time</span><span>Transaction</span></div>
-      {items.length ? items.map((item) => {
-        const Icon = icons[item.kind]
-        return <div className={`activity-row ${item.mine ? 'mine' : ''}`} key={item.id}>
-          <div className={`activity-icon ${item.kind}`}><Icon size={18} /></div>
-          <div><b>{item.title}</b><small>{item.detail}</small></div>
-          <time>{relativeTime(item.timestamp, tick)}</time>
-          {item.txHash ? <a href={`${EXPLORER}/tx/${item.txHash}`} target="_blank" rel="noreferrer">{shortAddress(item.txHash)} <ExternalLink size={12} /></a> : <span className="demo-tx">DEMO EVENT</span>}
-        </div>
-      }) : <div className="activity-empty">No contract events found in the recent RPC window.</div>}
-    </section>
-  </>
+function PageHead({ title, copy, tag }: { title: string; copy: string; tag?: React.ReactNode }) {
+  return <div className="page-head"><div><h1>{title}</h1><p>{copy}</p></div>{tag}</div>
 }
 
-function Protocol() {
-  return <>
-    <PageTitle eyebrow="How it works" title="Protocol" copy="The short version for players, followed by the exact flow used by the contracts." />
-    <section className="explain-grid">
-      {[
-        ['01', 'Get a Commander', 'The NFT costs 100,000 WAR. Half burns forever; half goes to the protocol treasury. Progress belongs to the NFT and follows it to a new owner.'],
-        ['02', 'Attack together', 'Everyone fires at one shared target. A free shot reloads every four hours; up to three extra shots per day cost 10,000 WAR each.'],
-        ['03', 'Grow your rank', 'Five ranks set reward weight. Captain through Colonel can be bought with WAR. General is trial-only and limited to ten seats.'],
-        ['04', 'Earn tokenized PLTR', 'Every five hours, Pons Creator Fees are split between active Commanders. Any wallet can close the round and earns 0.5%.'],
-      ].map(([number, title, text]) => <article key={number}><span>{number}</span><h2>{title}</h2><p>{text}</p></article>)}
-    </section>
-    <section className="architecture-panel">
-      <div><span className="section-label">Money flow</span><h2>One rule for every WAR spend</h2><p>Minting, missile upgrades, rank purchases and extra shots all call the same internal payment function. There is no alternate path that can skip the burn.</p></div>
-      <div className="split-diagram"><span><b>PLAYER</b><small>signed WAR spend</small></span><i /><span className="burn-node"><b>50%</b><small>0x…dEaD</small></span><i /><span><b>50%</b><small>treasury wallet</small></span></div>
-    </section>
-    <section className="contract-list">
-      <div><span>Network</span><b>Robinhood Chain · 4663</b><a href="https://docs.robinhood.com/chain/connecting/" target="_blank" rel="noreferrer">Official docs <ExternalLink size={12} /></a></div>
-      <div><span>Reward asset</span><b>PLTR · Robinhood Token</b><a href={`${EXPLORER}/token/${CONTRACTS.pltr}`} target="_blank" rel="noreferrer">{shortAddress(CONTRACTS.pltr)} <ExternalLink size={12} /></a></div>
-      <div><span>Pons V2 Fee Escrow</span><b>Creator Fees source</b><a href={`${EXPLORER}/address/${CONTRACTS.ponsFeeEscrow}`} target="_blank" rel="noreferrer">{shortAddress(CONTRACTS.ponsFeeEscrow)} <ExternalLink size={12} /></a></div>
-      <div><span>WARROOM Game</span><b>{CONTRACTS.game === '0x0000000000000000000000000000000000000000' ? 'Ready for deployment' : 'Deployed'}</b><span>{shortAddress(CONTRACTS.game)}</span></div>
-    </section>
-    <p className="legal-note">PLTR here means the Palantir Technologies Robinhood Token. It provides economic exposure and is not a share or shareholder right. Availability and transfers may be restricted by jurisdiction. Rewards are protocol fee redistribution, not dividends or investment advice.</p>
-  </>
+function UpgradePage({ state, selected, onUpgrade, onMint }: { state: State; selected?: Commander; onUpgrade: () => Promise<void>; onMint: () => void }) {
+  if (!selected) return <div className="page"><PageHead title="Upgrade" copy="Missile level decides how much damage each hit does." /><EmptyGate onMint={onMint} /></div>
+  return <div className="page">
+    <PageHead title="Upgrade" copy="Missile level decides how much damage a hit does. Half of every upgrade fee is burned." tag={<span className="tag tag-amb">{selected.hits} SUCCESSFUL HITS</span>} />
+    <div className="grid4">{MISSILES.map((missile) => {
+      const owned = selected.missileLevel === missile.level
+      const past = selected.missileLevel > missile.level
+      const sequential = selected.missileLevel + 1 === missile.level
+      const hitsReady = selected.hits >= missile.hits
+      const canUpgrade = sequential && hitsReady && state.warBalance >= missile.cost
+      return <section className={`mcard ${owned ? 'owned' : ''} ${!owned && !past && !canUpgrade ? 'locked' : ''}`} key={missile.level}>
+        <div className="top"><div><div className="tier">LEVEL {missile.level}</div><div className="nm">{missile.damage.toLocaleString()}<span> DMG</span></div></div>{owned ? <span className="tag tag-fed">Equipped</span> : past ? <span className="tag tag-off">Passed</span> : <LockKeyhole size={16} />}</div>
+        <div className="silo" aria-hidden="true">{Array.from({ length: 12 }, (_, index) => <i key={index} style={{ height: `${18 + ((index * 11 + missile.level * 17) % 8) * 4 + missile.level * 7}%` }} />)}</div>
+        <h2>{missileNames[missile.level - 1]}</h2>
+        <div className="mcard-foot">{owned ? <span className="eyebrow">Currently equipped</span> : past ? <span className="eyebrow">Superseded</span> : <><div className="ledger"><div><span>Requires</span><span className={hitsReady ? '' : 'rep'}>{missile.hits} hits</span></div><div><span>Cost</span><span>{shortToken(missile.cost)} WAR</span></div><div className="burn"><span>Burned</span><span>{shortToken(missile.cost / 2n)} WAR</span></div></div><button className={`btn btn-block ${canUpgrade ? 'btn-fed' : ''}`} disabled={!canUpgrade || Boolean(state.pendingAction)} onClick={() => void onUpgrade()}>{!sequential ? 'Upgrade in order' : !hitsReady ? `${missile.hits - selected.hits} more hits` : state.warBalance < missile.cost ? 'Not enough WAR' : 'Upgrade'}</button></>}</div>
+      </section>
+    })}</div>
+    <div className="notice page-notice">Missile level is power. Rank is reward. The two never mix.</div>
+  </div>
 }
 
-export default App
+function RankPage({ state, selected, onRankUp, onMint }: { state: State; selected?: Commander; onRankUp: (purchased: boolean) => Promise<void>; onMint: () => void }) {
+  if (!selected) return <div className="page"><PageHead title="Rank" copy="Rank multiplies your share of every reward round." /><EmptyGate onMint={onMint} /></div>
+  const ageDays = Math.floor((Date.now() / 1000 - selected.mintedAt) / 86_400)
+  return <div className="page">
+    <PageHead title="Rank" copy="Rank multiplies your share of PLTR rewards. Captain through Colonel can be earned or bought. General is trial-only." tag={<span className="tag tag-amb">YOUR RANK GIVES {Number(RANKS[selected.rank].multiplier) / 100}× REWARDS</span>} />
+    <div className="ladder">{RANKS.map((rank, index) => {
+      const current = selected.rank === index
+      const done = selected.rank > index
+      const next = selected.rank + 1 === index
+      const hitsReady = selected.hits >= rank.hits
+      const ageReady = ageDays >= rank.days
+      const full = rank.seats !== null && (state.rankPopulation[index] || 0) >= rank.seats
+      const earnedReady = next && hitsReady && ageReady && state.warBalance >= rank.earned && !full && index < 4
+      const buyReady = next && rank.buy > 0n && state.warBalance >= rank.buy && !full
+      const trialReady = next && index === 4 && !full && state.warBalance >= 800_000n * 10n ** 18n
+      return <div className={`rung ${current ? 'cur' : ''} ${done ? 'done' : ''}`} key={rank.name}>
+        <div className="chev"><b>{['I', 'II', 'III', 'IV', 'V'][index]}</b>{current ? 'YOU' : done ? 'HELD' : ''}</div>
+        <div><h4>{rank.name}{index === 4 && <span className="eyebrow"> — trial only</span>}</h4><div className="req">{index === 0 ? 'Issued at mint' : index === 4 ? 'Ten seats. A Colonel must pass the General trial.' : `${rank.hits} successful hits · ${rank.days} day${rank.days > 1 ? 's' : ''} · ${shortToken(rank.earned)} WAR`}</div>{rank.seats !== null && <><div className="seats">{Array.from({ length: rank.seats }, (_, seat) => <i className={seat < (state.rankPopulation[index] || 0) ? 'taken' : 'free'} key={seat} />)}</div><div className="eyebrow seat-copy">{state.rankPopulation[index] || 0} / {rank.seats} seats occupied{full ? ' — full' : ''}</div></>}</div>
+        <div className="mult"><span>REWARDS</span>{Number(rank.multiplier) / 100}×</div>
+        <div className="rank-actions">{done ? <span className="tag tag-off">Passed</span> : current ? <span className="tag tag-amb">Current</span> : index === 4 ? <button className={`btn btn-sm btn-block ${trialReady ? 'btn-amber' : ''}`} disabled={!trialReady || Boolean(state.pendingAction)} onClick={() => void onRankUp(false)}>{!next ? 'Colonels only' : full ? 'Seats full' : state.warBalance < 800_000n * 10n ** 18n ? 'Not enough WAR' : 'Enter trial · 800K WAR'}</button> : next ? <><button className={`btn btn-sm btn-block ${earnedReady ? 'btn-fed' : ''}`} disabled={!earnedReady || Boolean(state.pendingAction)} onClick={() => void onRankUp(false)}>{!hitsReady ? `${rank.hits - selected.hits} more hits` : !ageReady ? `${rank.days - ageDays}d to wait` : state.warBalance < rank.earned ? 'Not enough WAR' : `Earn it · ${shortToken(rank.earned)} WAR`}</button><button className={`btn btn-sm btn-block ${buyReady ? 'btn-amber' : ''}`} disabled={!buyReady || Boolean(state.pendingAction)} onClick={() => void onRankUp(true)}>Buy rank · {shortToken(rank.buy)} WAR</button></> : <span className="tag tag-off">Locked</span>}</div>
+      </div>
+    })}</div>
+    <div className="grid2 rank-explain">
+      <section className="panel"><div className="panel-h"><h3>Earn it</h3></div><div className="panel-b"><p>Land the hits, serve the days and pay the promotion fee. Half of every fee burns; the other half goes to the protocol treasury.</p><div className="ledger"><div><span>Captain</span><span>10 hits · 1 day · 100,000 WAR</span></div><div><span>Major</span><span>30 hits · 3 days · 300,000 WAR</span></div><div><span>Colonel</span><span>75 hits · 7 days · 900,000 WAR</span></div></div></div></section>
+      <section className="panel"><div className="panel-h"><h3>Buy it</h3><span className="tag tag-amb">FROM DAY ONE</span></div><div className="panel-b"><p>Skip hits and time, one rank at a time. General is the exception: no amount of WAR buys the seat.</p><div className="ledger"><div><span>Captain</span><span>250,000 WAR</span></div><div><span>Major</span><span>750,000 WAR</span></div><div><span>Colonel</span><span>2,250,000 WAR</span></div><div className="burn"><span>Burned on purchase</span><span>50%</span></div></div></div></section>
+    </div>
+  </div>
+}
+
+function RewardsPage({ state, selected, tick, onClaim, onClaimAll, onClose, onLaunch, onMint }: { state: State; selected?: Commander; tick: number; onClaim: () => Promise<void>; onClaimAll: () => Promise<void>; onClose: () => Promise<void>; onLaunch: () => Promise<void>; onMint: () => void }) {
+  if (!selected) return <div className="page"><PageHead title="Rewards" copy="Creator Fees are distributed to active Commanders every five hours." /><EmptyGate onMint={onMint} /></div>
+  const active = selected.activeRound === state.round.id
+  const rank = RANKS[selected.rank]
+  const totalClaimable = Object.values(state.claimableByCommander).reduce((sum, value) => sum + value, 0n)
+  const selectedClaimable = state.claimableByCommander[selected.id.toString()] ?? state.claimable
+  const roundReward = state.creatorFees * 9_950n / 10_000n
+  const estimated = active && state.round.totalWeight > 0n ? roundReward * rank.multiplier / state.round.totalWeight : 0n
+  const closable = tick >= state.round.endsAt
+  return <div className="page">
+    <PageHead title="Rewards" copy="Pons Creator Fees flow into the game. Every five hours anyone can close the round; active Commander weights are settled in tokenized PLTR." tag={<span className={`tag ${active ? 'tag-fed' : 'tag-rep'}`}>{active ? "IN THIS ROUND'S SNAPSHOT" : 'LAUNCH TO QUALIFY'}</span>} />
+    <div className="grid2 rewards-grid">
+      <section className="panel objective"><div className="panel-h"><h3>Available to claim</h3><span className="eyebrow">Commander #{selected.id}</span></div><div className="panel-b rewards-claim"><div className="reward-number">{token(selectedClaimable)} <small>PLTR</small></div><p>Sitting in the rewards contract until you claim it.</p><button className={`btn btn-lg btn-block ${selectedClaimable > 0n ? 'btn-amber' : ''}`} disabled={selectedClaimable === 0n || Boolean(state.pendingAction)} onClick={() => void onClaim()}>{selectedClaimable > 0n ? `Claim ${token(selectedClaimable)} PLTR` : 'Nothing to claim yet'}</button>{state.commanders.length > 1 && <button className={`btn btn-block ${totalClaimable > 0n ? 'btn-fed' : ''}`} disabled={totalClaimable === 0n || Boolean(state.pendingAction)} onClick={() => void onClaimAll()}>Claim {token(totalClaimable)} PLTR across all Commanders</button>}<div className="ledger"><div><span>Wallet PLTR balance</span><span>{token(state.pltrBalance)} PLTR</span></div><div><span>Available for #{selected.id}</span><span className="amb">{token(selectedClaimable)} PLTR</span></div><div><span>Available across wallet</span><span className="fed">{token(totalClaimable)} PLTR</span></div></div></div></section>
+      <section className={`panel ${closable ? 'objective' : ''}`}><div className="panel-h"><h3>Round #{state.round.id}</h3><span className={`tag ${closable ? 'tag-amb' : 'tag-off'}`}>{closable ? 'READY TO CLOSE' : `CLOSES IN ${countdown(state.round.endsAt, tick)}`}</span></div><div className="panel-b"><div className="ledger round-ledger"><div><span>Claimable in Pons Fee Escrow</span><span className="amb">{token(state.creatorFees)} PLTR</span></div><div><span>Closer fee · 0.5%</span><span>{token(state.creatorFees * 5n / 1000n)} PLTR</span></div><div><span>Round reward after closer fee</span><span>{token(roundReward)} PLTR</span></div><div><span>Total active weight</span><span>{state.round.totalWeight.toLocaleString()}</span></div><div><span>Your rank</span><span>{rank.name} · {Number(rank.multiplier) / 100}×</span></div><div><span>Your projected share</span><span className="amb">{token(estimated)} PLTR</span></div></div>{closable ? <button className="btn btn-lg btn-block btn-amber close-round" disabled={Boolean(state.pendingAction)} onClick={() => void onClose()}>Close round and keep 0.5%</button> : !active ? <button className="btn btn-block btn-fed close-round" disabled={Boolean(state.pendingAction)} onClick={() => void onLaunch()}>Launch once to enter this round</button> : <div className="round-ready"><Check size={15} /> Commander #{selected.id} is active in this round</div>}<div className="stepline vertical"><div className="st"><div className="n">STEP 1</div><div className="t">Trading volume</div><p>WAR changes hands through Pons.</p></div><div className="st"><div className="n">STEP 2</div><div className="t">Creator Fees</div><p>Swept PLTR becomes claimable in Fee Escrow.</p></div><div className="st"><div className="n">STEP 3</div><div className="t">Five-hour close</div><p>Weights freeze and rewards become claimable.</p></div></div></div></section>
+    </div>
+    {state.commanders.length > 1 && <section className="panel commander-rewards"><div className="panel-h"><h3>Your Commanders</h3><span className="eyebrow">Settled per NFT</span></div><table><thead><tr><th>Commander</th><th>Rank</th><th>Weight</th><th>This round</th><th className="right">Available</th></tr></thead><tbody>{state.commanders.map((commander) => <tr className={commander.id === selected.id ? 'me' : ''} key={commander.id.toString()}><td><div className="cmdr"><CommanderGlyph id={commander.id} /><span>#{commander.id}</span></div></td><td>{RANKS[commander.rank].name}</td><td className="num">{Number(RANKS[commander.rank].multiplier) / 100}×</td><td>{commander.activeRound === state.round.id ? <span className="tag tag-fed">IN</span> : <span className="tag tag-off">OUT</span>}</td><td className="num right amb">{token(state.claimableByCommander[commander.id.toString()] ?? 0n)} PLTR</td></tr>)}</tbody></table></section>}
+    <section className="panel total-burned"><div className="panel-h"><h3>Total WAR burned</h3><span className="eyebrow">Removed from supply permanently</span></div><div className="panel-b"><b>{token(state.totalBurned, 18, 0)}</b><span className="eyebrow">Half of every WAR spent in the game is burned</span><p>You have burned {token(selected.warBurned, 18, 0)} WAR with Commander #{selected.id}.</p></div></section>
+  </div>
+}
+
+function ActivityPage({ items, tick }: { items: Activity[]; tick: number }) {
+  return <div className="page"><PageHead title="Activity" copy="Every mint, rocket launch, launcher upgrade, rank change and paid extra shot is emitted by the game contract." tag={<span className="tag tag-fed">LIVE · ON-CHAIN</span>} /><section className="activity-panel"><div className="activity-head"><span>Event</span><span>Details</span><span>Time</span><span>Transaction</span></div>{items.length ? items.map((item) => <ActivityRow item={item} tick={tick} key={item.id} />) : <div className="activity-empty">No activity found in the current RPC window.</div>}</section></div>
+}
+
+function ActivityRow({ item, tick }: { item: Activity; tick: number }) {
+  const icons = { launch: Rocket, extra: Zap, mint: PackagePlus, rank: Medal, upgrade: Trophy, reward: CircleDollarSign, round: Target }
+  const Icon = icons[item.kind]
+  return <div className={`activity-row ${item.mine ? 'me' : ''}`}><span className={`activity-icon ${item.kind}`}><Icon size={15} /></span><div><b>{item.title}</b><small>{item.commanderId ? `Commander #${item.commanderId}` : 'Protocol event'}</small></div><div>{item.detail}</div><time>{relativeTime(item.timestamp, tick)}</time>{item.txHash ? <a href={`${EXPLORER}/tx/${item.txHash}`} target="_blank" rel="noreferrer">View tx <ExternalLink size={12} /></a> : <span className="demo-tx">DEMO</span>}</div>
+}
+
+function DocsPage() {
+  return <div className="page"><PageHead title="Protocol" copy="WARROOM in plain language: everyone attacks one common target, and every five hours active Commanders divide trading fees according to rank." tag={<span className="tag tag-amb">ROBINHOOD CHAIN · 4663</span>} /><div className="explain-grid">{[
+    ['01', 'Get a Commander', 'Mint an ERC-721 for 100,000 WAR. Half burns and half goes to the treasury. Its progress moves with the NFT.'],
+    ['02', 'Attack together', 'Launch one free rocket every four hours, or burn/spend 10,000 WAR for an extra shot, up to three per day.'],
+    ['03', 'Rise in rank', 'Hits unlock promotions and launcher upgrades. Rank controls your reward weight; General is trial-only.'],
+    ['04', 'Claim PLTR', 'Pons Creator Fees settle every five hours. Anyone can close a ready round for a 0.5% closer fee.'],
+  ].map(([number, title, copy]) => <article key={number}><span>{number}</span><h2>{title}</h2><p>{copy}</p></article>)}</div><section className="architecture-panel"><div><span className="eyebrow">Every WAR payment</span><h2>One spend. Two destinations.</h2><p>The game contract transfers exactly half to the irrecoverable burn address and half to the configured treasury in the same transaction.</p></div><div className="split-diagram"><span><b>100% WAR</b><small>player approval</small></span><i /><span className="burn-node"><b>50% BURN</b><small>0x…dEaD</small></span><i /><span><b>50% TREASURY</b><small>configured wallet</small></span></div></section><ProtocolContracts /><div className="notice legal">The target and hardware are fictional. Tokenized stock transfers may be jurisdiction-restricted. Contract code should receive an independent audit before mainnet deployment.</div></div>
+}
+
+function ProtocolContracts() {
+  return <div className="contracts"><div><span>Network</span><b>Robinhood Chain</b><small>Chain ID 4663</small></div><div><span>WARROOM Game</span><b>{CONTRACTS.game === '0x0000000000000000000000000000000000000000' ? 'Awaiting deployment' : shortAddress(CONTRACTS.game)}</b>{CONTRACTS.game !== '0x0000000000000000000000000000000000000000' && <a href={`${EXPLORER}/address/${CONTRACTS.game}`} target="_blank" rel="noreferrer">Explorer <ExternalLink size={11} /></a>}</div><div><span>Reward asset</span><b>Tokenized PLTR</b><a href={`${EXPLORER}/token/${CONTRACTS.pltr}`} target="_blank" rel="noreferrer">{shortAddress(CONTRACTS.pltr)} <ExternalLink size={11} /></a></div><div><span>Creator Fees</span><b>Pons V2 Fee Escrow</b><a href={`${EXPLORER}/address/${CONTRACTS.ponsFeeEscrow}`} target="_blank" rel="noreferrer">{shortAddress(CONTRACTS.ponsFeeEscrow)} <ExternalLink size={11} /></a></div></div>
+}
+
+function MintModal({ state, quantity, setQuantity, onClose, onMint }: { state: State; quantity: number; setQuantity: (value: number) => void; onClose: () => void; onMint: () => Promise<void> }) {
+  const remaining = state.maxSupply - state.minted
+  const maxQuantity = Math.max(1, Math.min(25, remaining))
+  const cost = MINT_PRICE * BigInt(quantity)
+  const canMint = remaining > 0 && state.connected && state.warBalance >= cost && !state.pendingAction
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="modal mint-modal" role="dialog" aria-modal="true" aria-labelledby="mint-title"><div className="modal-head"><div><span className="eyebrow">ERC-721 · MAX 1,200</span><h2 id="mint-title">Mint Commander</h2></div><button onClick={onClose} aria-label="Close"><X size={18} /></button></div><div className="mint-visual"><CommanderGlyph id={BigInt(state.minted + 1)} size={78} /><div><span>Next assignment</span><b>#{String(state.minted + 1).padStart(3, '0')}</b><small>Recruit · Missile Level 1</small></div></div><div className="quantity-row"><span>Quantity</span><div><button onClick={() => setQuantity(Math.max(1, quantity - 1))} disabled={quantity <= 1}>−</button><b>{quantity}</b><button onClick={() => setQuantity(Math.min(maxQuantity, quantity + 1))} disabled={quantity >= maxQuantity}>+</button></div></div><div className="presets">{[1, 2, 5, 10].map((value) => <button className={quantity === value ? 'on' : ''} disabled={value > maxQuantity} onClick={() => setQuantity(value)} key={value}>{value}</button>)}<button disabled={!remaining} onClick={() => setQuantity(maxQuantity)}>MAX</button></div><div className="supply-row"><span>{state.minted.toLocaleString()} / {state.maxSupply.toLocaleString()} minted</span><div className="bar"><i style={{ transform: `scaleX(${state.minted / state.maxSupply})` }} /></div></div><div className="ledger mint-ledger"><div><span>{quantity} × 100,000</span><span>{shortToken(cost)} WAR</span></div><div className="burn"><span>Burned forever</span><span>{shortToken(cost / 2n)} WAR · 50%</span></div><div><span>Protocol treasury</span><span>{shortToken(cost / 2n)} WAR · 50%</span></div></div><button className={`btn btn-lg btn-block ${canMint ? 'btn-amber' : ''}`} disabled={!canMint} onClick={() => void onMint()}>{remaining <= 0 ? 'Sold out' : state.warBalance < cost ? 'Not enough WAR' : `Mint ${quantity} Commander${quantity > 1 ? 's' : ''}`}</button><p className="modal-note">Rank, launcher level, hits and damage live on the NFT and move with it when transferred.</p></section></div>
+}
+
+function RosterModal({ state, selected, onClose, onSelect, onMint }: { state: State; selected?: Commander; onClose: () => void; onSelect: (id: bigint) => void; onMint: () => void }) {
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="modal roster-modal" role="dialog" aria-modal="true" aria-labelledby="roster-title"><div className="modal-head"><div><span className="eyebrow">Your wallet</span><h2 id="roster-title">Select Commander</h2></div><button onClick={onClose} aria-label="Close"><X size={18} /></button></div><div className="roster-list">{state.commanders.length ? state.commanders.map((commander) => <button className={selected?.id === commander.id ? 'selected' : ''} onClick={() => onSelect(commander.id)} key={commander.id.toString()}><CommanderGlyph id={commander.id} size={34} /><span><b>Commander #{commander.id}</b><small>{RANKS[commander.rank].name} · Missile Level {commander.missileLevel} · {commander.hits} hits</small></span>{selected?.id === commander.id && <Check size={17} />}</button>) : <div className="roster-empty"><Shield size={34} /><p>No Commander NFTs found on this wallet.</p></div>}</div><button className="btn btn-block btn-amber" onClick={onMint}><PackagePlus size={15} /> Mint more</button></section></div>
+}

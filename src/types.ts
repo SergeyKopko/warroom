@@ -56,10 +56,12 @@ export type GameSnapshot = {
   targetCycle: number
   totalBurned: bigint
   totalLaunches: bigint
+  rankPopulation: number[]
   creatorFees: bigint
   round: Round
   commanders: Commander[]
   selectedId?: bigint
   claimable: bigint
+  claimableByCommander: Record<string, bigint>
   activity: Activity[]
 }
