@@ -27,6 +27,9 @@ export const CONTRACTS = {
 export const EXPLORER = robinhood.blockExplorers.default.url
 export const isConfigured = CONTRACTS.game !== zeroAddress
 export const isWarConfigured = CONTRACTS.war !== zeroAddress
+// The interactive simulation is a local development aid only. Production must
+// never manufacture balances, Commanders, activity or successful game actions.
+export const isLocalDemo = !isConfigured && import.meta.env.DEV
 
 export const WAR = (value: number | bigint) => BigInt(value) * 10n ** 18n
 export const RANKS = [

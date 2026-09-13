@@ -6,7 +6,6 @@ import {
   formatUnits,
   getContract,
   http,
-  maxUint256,
   type Address,
 } from 'viem'
 import { gameAbi, erc20Abi } from './abi'
@@ -20,12 +19,14 @@ import {
   ROUND_SECONDS,
   WAR,
   isConfigured,
+  isLocalDemo,
   isWarConfigured,
   robinhood,
 } from './config'
 import type { Activity, Commander, GameSnapshot, Rank } from './types'
 import { createBrowserActivityTransport } from './activityTransport'
 import { makePendingActivity, mergeActivityEvents, pendingDescriptor } from './shared/activity'
+import { getInjectedProvider } from './wallet'
 
 const publicClient = createPublicClient({ chain: robinhood, transport: http() })
 const DAY = 86_400
@@ -63,25 +64,25 @@ const initialActivity: Activity[] = [
 
 const initialSnapshot: GameSnapshot = {
   connected: false,
-  demo: !isConfigured,
+  demo: isLocalDemo,
   loading: false,
-  warBalance: WAR(2_400_000),
+  warBalance: isLocalDemo ? WAR(2_400_000) : 0n,
   pltrBalance: 0n,
   allowance: 0n,
-  minted: 341,
+  minted: isLocalDemo ? 341 : 0,
   maxSupply: 1200,
-  targetHp: 64_200_000n,
+  targetHp: isLocalDemo ? 64_200_000n : 100_000_000n,
   targetMaxHp: 100_000_000n,
-  targetCycle: 11,
-  totalBurned: WAR(38_421_000),
-  totalLaunches: 214_800n,
-  rankPopulation: [203, 88, 37, 12, 1],
-  creatorFees: 1_482_000_000_000_000_000n,
-  round: { id: 47, endsAt: now() + ROUND_SECONDS, reward: 0n, totalWeight: 152_000n, closed: false },
+  targetCycle: isLocalDemo ? 11 : 0,
+  totalBurned: isLocalDemo ? WAR(38_421_000) : 0n,
+  totalLaunches: isLocalDemo ? 214_800n : 0n,
+  rankPopulation: isLocalDemo ? [203, 88, 37, 12, 1] : [0, 0, 0, 0, 0],
+  creatorFees: isLocalDemo ? 1_482_000_000_000_000_000n : 0n,
+  round: { id: isLocalDemo ? 47 : 0, endsAt: isLocalDemo ? now() + ROUND_SECONDS : 0, reward: 0n, totalWeight: isLocalDemo ? 152_000n : 0n, closed: false },
   commanders: [],
   claimable: 0n,
   claimableByCommander: {},
-  activity: isConfigured ? [] : initialActivity,
+  activity: isLocalDemo ? initialActivity : [],
 }
 
 function deserializeDemo(): GameSnapshot | undefined {
@@ -137,8 +138,9 @@ function messageFromError(error: unknown) {
 }
 
 export function useWarroom() {
-  const [state, setState] = useState<GameSnapshot>(() => (!isConfigured ? deserializeDemo() : undefined) || initialSnapshot)
+  const [state, setState] = useState<GameSnapshot>(() => (isLocalDemo ? deserializeDemo() : undefined) || initialSnapshot)
   const accountRef = useRef<Address | undefined>(undefined)
+  const providerRef = useRef<ReturnType<typeof getInjectedProvider>>(undefined)
 
   const selected = useMemo(
     () => state.commanders.find((commander) => commander.id === state.selectedId) || state.commanders[0],
@@ -235,8 +237,9 @@ export function useWarroom() {
   }, [])
 
   const connect = useCallback(async () => {
-    if (!window.ethereum) {
-      if (!isConfigured) {
+    const provider = getInjectedProvider()
+    if (!provider) {
+      if (isLocalDemo) {
         setState((current) => ({ ...current, connected: true, address: '0xDEmo00000000000000000000000000000000bEEF' as Address }))
         return
       }
@@ -244,7 +247,8 @@ export function useWarroom() {
       return
     }
     try {
-      const wallet = createWalletClient({ chain: robinhood, transport: custom(window.ethereum) })
+      providerRef.current = provider
+      const wallet = createWalletClient({ chain: robinhood, transport: custom(provider) })
       const [account] = await wallet.requestAddresses()
       const chainId = await wallet.getChainId()
       if (chainId !== robinhood.id) {
@@ -259,7 +263,7 @@ export function useWarroom() {
       if (isConfigured) await refresh(account)
       else {
         const walletWarBalance = await readWalletWarBalance(account)
-        setState((current) => ({ ...current, connected: true, address: account, walletWarBalance, error: undefined }))
+        setState((current) => ({ ...current, connected: true, address: account, warBalance: walletWarBalance ?? 0n, walletWarBalance, error: undefined }))
       }
     } catch (error) {
       setState((current) => ({ ...current, error: messageFromError(error) }))
@@ -273,12 +277,47 @@ export function useWarroom() {
     setState((current) => ({ ...current, pendingAction: undefined }))
   }, [])
 
+  const unavailable = useCallback((): never => {
+    const error = new Error('WARROOM contract is awaiting deployment. No transaction was sent.')
+    setState((current) => ({ ...current, error: error.message }))
+    throw error
+  }, [])
+
+  const revokeWarAllowance = useCallback(async () => {
+    const account = accountRef.current
+    const provider = providerRef.current ?? getInjectedProvider()
+    if (!isConfigured || !provider || !account) throw new Error('Connect your wallet first.')
+    setState((current) => ({ ...current, pendingAction: 'Revoking WAR allowance', error: undefined }))
+    try {
+      const wallet = createWalletClient({ account, chain: robinhood, transport: custom(provider) })
+      const chainId = await wallet.getChainId()
+      if (chainId !== robinhood.id) {
+        try {
+          await wallet.switchChain({ id: robinhood.id })
+        } catch {
+          await wallet.addChain({ chain: robinhood })
+          await wallet.switchChain({ id: robinhood.id })
+        }
+      }
+      const hash = await wallet.writeContract({ address: CONTRACTS.war, abi: erc20Abi, functionName: 'approve', args: [CONTRACTS.game, 0n] })
+      const receipt = await publicClient.waitForTransactionReceipt({ hash })
+      if (receipt.status !== 'success') throw new Error('WAR allowance revocation reverted.')
+      await refresh(account)
+    } catch (error) {
+      setState((current) => ({ ...current, error: messageFromError(error) }))
+      throw error
+    } finally {
+      setState((current) => ({ ...current, pendingAction: undefined }))
+    }
+  }, [refresh])
+
   const write = useCallback(async (label: string, functionName: string, args: readonly unknown[], spend = 0n) => {
     const account = accountRef.current
-    if (!window.ethereum || !account) throw new Error('Connect your wallet first.')
+    const provider = providerRef.current ?? getInjectedProvider()
+    if (!provider || !account) throw new Error('Connect your wallet first.')
     setState((current) => ({ ...current, pendingAction: label, error: undefined }))
     try {
-      const wallet = createWalletClient({ account, chain: robinhood, transport: custom(window.ethereum) })
+      const wallet = createWalletClient({ account, chain: robinhood, transport: custom(provider) })
       const chainId = await wallet.getChainId()
       if (chainId !== robinhood.id) {
         try {
@@ -290,15 +329,20 @@ export function useWarroom() {
       }
       if (spend > state.allowance) {
         const warAddress = await publicClient.readContract({ address: CONTRACTS.game, abi: gameAbi, functionName: 'war' })
-        const approval = await wallet.writeContract({ address: warAddress, abi: erc20Abi, functionName: 'approve', args: [CONTRACTS.game, maxUint256] })
-        await publicClient.waitForTransactionReceipt({ hash: approval })
+        // Limit approval to this action's exact cost. This deliberately causes
+        // another approval for later paid actions instead of leaving a blanket
+        // allowance over the wallet's entire WAR balance.
+        const approval = await wallet.writeContract({ address: warAddress, abi: erc20Abi, functionName: 'approve', args: [CONTRACTS.game, spend] })
+        const approvalReceipt = await publicClient.waitForTransactionReceipt({ hash: approval })
+        if (approvalReceipt.status !== 'success') throw new Error('WAR approval transaction reverted.')
       }
       const { request } = await publicClient.simulateContract({ address: CONTRACTS.game, abi: gameAbi, functionName: functionName as any, args: args as any, account })
       const hash = await wallet.writeContract(request)
       const descriptor = pendingDescriptor(functionName, args)
       const pending = makePendingActivity({ txHash: hash, ...descriptor, actor: account })
       setState((current) => ({ ...current, activity: mergeActivityEvents(current.activity, [pending], account) }))
-      await publicClient.waitForTransactionReceipt({ hash })
+      const receipt = await publicClient.waitForTransactionReceipt({ hash })
+      if (receipt.status !== 'success') throw new Error('Game transaction reverted.')
       await refresh(account)
     } catch (error) {
       setState((current) => ({ ...current, error: messageFromError(error) }))
@@ -312,9 +356,11 @@ export function useWarroom() {
     connect,
     select(id: bigint) { setState((current) => ({ ...current, selectedId: id, claimable: current.claimableByCommander[id.toString()] ?? 0n })) },
     dismissError() { setState((current) => ({ ...current, error: undefined })) },
+    revokeWarAllowance,
     resetDemo() { localStorage.removeItem('warroom-demo-v1'); setState(initialSnapshot) },
     async mint(quantity: number) {
-      if (!state.demo) return write('Minting Commander', 'mint', [BigInt(quantity)], MINT_PRICE * BigInt(quantity))
+      if (isConfigured) return write('Minting Commander', 'mint', [BigInt(quantity)], MINT_PRICE * BigInt(quantity))
+      if (!state.demo) return unavailable()
       await runDemo('Minting Commander', () => {
         const ids = Array.from({ length: quantity }, (_, index) => BigInt(state.minted + index + 1))
         const commanders = ids.map(newCommander)
@@ -331,7 +377,8 @@ export function useWarroom() {
     },
     async launch(paid: boolean) {
       if (!selected) return
-      if (!state.demo) return write(paid ? 'Authorizing extra shot' : 'Launching rocket', 'launch', [selected.id, paid], paid ? EXTRA_SHOT_PRICE : 0n)
+      if (isConfigured) return write(paid ? 'Authorizing extra shot' : 'Launching rocket', 'launch', [selected.id, paid], paid ? EXTRA_SHOT_PRICE : 0n)
+      if (!state.demo) return unavailable()
       await runDemo(paid ? 'Firing extra rocket' : 'Launching rocket', () => {
         const hit = Math.random() >= 0.3
         const damage = hit ? MISSILES[selected.missileLevel - 1].damage : 0n
@@ -362,7 +409,8 @@ export function useWarroom() {
     async upgrade() {
       if (!selected || selected.missileLevel >= 4) return
       const next = MISSILES[selected.missileLevel]
-      if (!state.demo) return write('Upgrading missile', 'upgradeMissile', [selected.id], next.cost)
+      if (isConfigured) return write('Upgrading missile', 'upgradeMissile', [selected.id], next.cost)
+      if (!state.demo) return unavailable()
       await runDemo('Upgrading missile', () => {
         setState((current) => ({ ...current, warBalance: current.warBalance - next.cost, totalBurned: current.totalBurned + next.cost / 2n, commanders: current.commanders.map((c) => c.id === selected.id ? { ...c, missileLevel: c.missileLevel + 1, warSpent: c.warSpent + next.cost, warBurned: c.warBurned + next.cost / 2n } : c) }))
         addActivity({ kind: 'upgrade', title: `Commander #${selected.id} upgraded the launcher`, detail: `Missile level ${next.level} · ${formatUnits(next.cost / 2n, 18)} WAR burned`, commanderId: selected.id })
@@ -373,14 +421,16 @@ export function useWarroom() {
       const next = RANKS[selected.rank + 1]
       const price = selected.rank === 3 ? WAR(800_000) : purchased ? next.buy : next.earned
       const method = selected.rank === 3 ? 'enterGeneralTrial' : purchased ? 'buyNextRank' : 'promoteWithProgress'
-      if (!state.demo) return write('Upgrading rank', method, [selected.id], price)
+      if (isConfigured) return write('Upgrading rank', method, [selected.id], price)
+      if (!state.demo) return unavailable()
       await runDemo('Upgrading rank', () => {
         setState((current) => ({ ...current, warBalance: current.warBalance - price, totalBurned: current.totalBurned + price / 2n, commanders: current.commanders.map((c) => c.id === selected.id ? { ...c, rank: (c.rank + 1) as Rank, warSpent: c.warSpent + price, warBurned: c.warBurned + price / 2n } : c) }))
         addActivity({ kind: 'rank', title: `Commander #${selected.id} reached ${next.name}`, detail: `${purchased ? 'Purchased rank' : selected.rank === 3 ? 'General trial completed' : 'Earned rank'} · ${formatUnits(price / 2n, 18)} WAR burned`, commanderId: selected.id })
       })
     },
     async closeRound() {
-      if (!state.demo) return write('Closing reward round', 'closeRound', [])
+      if (isConfigured) return write('Closing reward round', 'closeRound', [])
+      if (!state.demo) return unavailable()
       if (now() < state.round.endsAt) return
       await runDemo('Closing reward round', () => {
         const fee = state.creatorFees * 5n / 1000n
@@ -408,10 +458,11 @@ export function useWarroom() {
     },
     async claim() {
       if (!selected) return
-      if (!state.demo) {
+      if (isConfigured) {
         const ids = Array.from({ length: Math.min(48, state.round.id - 1) }, (_, index) => BigInt(state.round.id - 1 - index))
         return write('Claiming PLTR', 'claimRewards', [selected.id, ids])
       }
+      if (!state.demo) return unavailable()
       const amount = state.claimableByCommander[selected.id.toString()] ?? state.claimable
       if (!amount) return
       await runDemo('Claiming PLTR', () => {
@@ -423,7 +474,8 @@ export function useWarroom() {
       const tokenIds = state.commanders.filter((commander) => (state.claimableByCommander[commander.id.toString()] ?? 0n) > 0n).map((commander) => commander.id)
       if (!tokenIds.length) return
       const ids = Array.from({ length: Math.min(48, state.round.id - 1) }, (_, index) => BigInt(state.round.id - 1 - index))
-      if (!state.demo) return write('Claiming all PLTR', 'claimRewardsBatch', [tokenIds, ids])
+      if (isConfigured) return write('Claiming all PLTR', 'claimRewardsBatch', [tokenIds, ids])
+      if (!state.demo) return unavailable()
       const total = tokenIds.reduce((sum, tokenId) => sum + (state.claimableByCommander[tokenId.toString()] ?? 0n), 0n)
       await runDemo('Claiming all PLTR', () => {
         const cleared = { ...state.claimableByCommander }
@@ -432,18 +484,19 @@ export function useWarroom() {
         addActivity({ kind: 'reward', title: `${tokenIds.length} Commanders claimed rewards`, detail: `${Number(formatUnits(total, 18)).toFixed(4)} PLTR` })
       })
     },
-  }), [addActivity, connect, runDemo, selected, state, write])
+  }), [addActivity, connect, revokeWarAllowance, runDemo, selected, state, unavailable, write])
 
   useEffect(() => {
-    if (!window.ethereum) return
-    const provider = window.ethereum
+    const provider = getInjectedProvider()
+    if (!provider) return
+    providerRef.current = provider
     let disposed = false
     const onAccounts = (accounts: unknown) => {
       const next = Array.isArray(accounts) ? accounts[0] as Address | undefined : undefined
       accountRef.current = next
       if (next && isConfigured) refresh(next)
       else if (next) void readWalletWarBalance(next).then((walletWarBalance) => {
-        if (!disposed && accountRef.current === next) setState((current) => ({ ...current, connected: true, address: next, walletWarBalance }))
+        if (!disposed && accountRef.current === next) setState((current) => ({ ...current, connected: true, address: next, warBalance: walletWarBalance ?? 0n, walletWarBalance }))
       }).catch(() => undefined)
       else setState((current) => ({ ...current, connected: false, address: undefined, walletWarBalance: undefined, commanders: [] }))
     }

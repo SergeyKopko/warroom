@@ -12,6 +12,7 @@ import {
 } from 'viem'
 import artifact from '../artifacts/WarroomGame.json'
 import { CONTRACTS, EXPLORER, robinhood } from './config'
+import { getInjectedProvider } from './wallet'
 
 const METADATA_BASE_URI = 'https://warroom-eosin.vercel.app/api/metadata/'
 
@@ -43,8 +44,9 @@ export default function DeployPage() {
   const correctWallet = Boolean(account && admin && account.toLowerCase() === admin.toLowerCase())
 
   const walletClient = async () => {
-    if (!window.ethereum) throw new Error('Install Robinhood Wallet, MetaMask or another EVM wallet.')
-    const wallet = createWalletClient({ chain: robinhood, transport: custom(window.ethereum) })
+    const provider = getInjectedProvider()
+    if (!provider) throw new Error('Install Robinhood Wallet, MetaMask or another EVM wallet.')
+    const wallet = createWalletClient({ chain: robinhood, transport: custom(provider) })
     const [nextAccount] = await wallet.requestAddresses()
     if (await wallet.getChainId() !== robinhood.id) {
       try {
@@ -56,7 +58,7 @@ export default function DeployPage() {
     }
     setAccount(nextAccount)
     setBalance(await publicClient.getBalance({ address: nextAccount }))
-    return createWalletClient({ account: nextAccount, chain: robinhood, transport: custom(window.ethereum) })
+    return createWalletClient({ account: nextAccount, chain: robinhood, transport: custom(provider) })
   }
 
   const connect = async () => {
@@ -106,7 +108,7 @@ export default function DeployPage() {
       <div className="deploy-grid">
         <span>Admin / owner</span><b>{admin || 'Missing'}</b>
         <span>Treasury · receives 50% WAR</span><b>{treasury || 'Missing'}</b>
-        <span>Temporary WAR</span><b>{CONTRACTS.war}</b>
+        <span>WAR token</span><b>{CONTRACTS.war}</b>
         <span>Tokenized PLTR</span><b>{CONTRACTS.pltr}</b>
         <span>Pons Fee Escrow</span><b>{CONTRACTS.ponsFeeEscrow}</b>
         <span>NFT metadata</span><b>{METADATA_BASE_URI}</b>

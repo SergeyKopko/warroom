@@ -24,7 +24,7 @@ Activity indexer ── confirmations/reorg check ──► Neon PostgreSQL
 
 The database is the common source for every visitor. A wallet is not required to load history or receive new events. When a wallet is connected, the same rows are compared with `actor` and marked `mine` in the interface.
 
-Before `WARROOM_GAME_ADDRESS` and `DEPLOYMENT_BLOCK` are configured, the deployed API intentionally returns an empty shared feed and SSE heartbeats while the frontend remains in demo mode. It never guesses or accepts a contract address from a visitor.
+Before `WARROOM_GAME_ADDRESS` and `DEPLOYMENT_BLOCK` are configured, the deployed API intentionally returns an empty shared feed and SSE heartbeats. The production frontend shows only real wallet balances, creates no simulated Commanders or Activity rows, and keeps transaction actions disabled. It never guesses or accepts a contract address from a visitor. The interactive simulation is available only from Vite's local development build.
 
 The indexer accepts no contract address or prebuilt Activity row from a client. It only reads `WARROOM_GAME_ADDRESS`, decodes the known ABI and inserts events with a unique `(chain_id, contract_address, transaction_hash, log_index)` constraint. Events without an owner field use the sender of their on-chain transaction as `actor`.
 
@@ -85,9 +85,9 @@ Server-only variables have no `VITE_` prefix. Vite intentionally embeds only the
 | `UPSTASH_REDIS_REST_TOKEN` | production | Upstash token; server only |
 | `ALLOWED_ORIGINS` | production | Comma-separated exact origins allowed by CORS |
 
-Contract tooling also accepts the public `WAR_TOKEN_ADDRESS`, `TREASURY_ADDRESS`, `ADMIN_ADDRESS`, `PONS_FEE_ESCROW` and `PLTR_TOKEN_ADDRESS`. `WAR_TOKEN_ADDRESS` is currently set to the temporary Robinhood Chain token `0x48a9E2ec1EaD16C709e1187ac13e7434f9B21a16`; the UI intentionally calls it WAR. Replace only this address when the final WAR contract is ready. No private key is read, stored or required by the application or indexer.
+Contract tooling also accepts the public `WAR_TOKEN_ADDRESS`, `TREASURY_ADDRESS`, `ADMIN_ADDRESS`, `PONS_FEE_ESCROW` and `PLTR_TOKEN_ADDRESS`. `WAR_TOKEN_ADDRESS` is currently set to the real Robinhood Chain ERC-20 supplied for this stage, `0x48a9E2ec1EaD16C709e1187ac13e7434f9B21a16`; the UI intentionally calls it WAR. Replace only this address when the final WAR contract is ready. No private key is read, stored or required by the application or indexer.
 
-Verify the temporary token's read-only ERC-20 interface and required 18 decimals with `pnpm token:verify`. This sends no transaction and requests no wallet signature.
+Verify the configured token's read-only ERC-20 interface and required 18 decimals with `pnpm token:verify`. This sends no transaction and requests no wallet signature.
 
 ## Local development
 
@@ -151,11 +151,12 @@ Check the current limits in each provider dashboard before launch because free-t
 
 The constructor stores the production NFT metadata base URI. `/api/metadata/:tokenId` reads the current Commander state from chain and exposes rank, missile level, hits, launches, damage and WAR spending/burn attributes alongside `public/commander-nft.png`.
 
-For the current Robinhood mainnet staging deployment, pass the temporary `WAR_TOKEN_ADDRESS` into the immutable `war_` constructor argument; the site intentionally keeps displaying the symbol `WAR`. Do not assume the same address exists on testnet: deploy a test ERC-20 there and configure its address instead. Local Solidity integration tests use a mintable 18-decimal ERC-20 double so mint/burn/treasury behavior can be verified without spending or impersonating holders of the live token.
+For the current Robinhood mainnet deployment, pass the configured `WAR_TOKEN_ADDRESS` into the immutable `war_` constructor argument; the site intentionally keeps displaying the symbol `WAR`. Local Solidity integration tests use an isolated mintable ERC-20 double so mint/burn/treasury behavior can be verified without spending or impersonating holders of the live token. That test contract is never deployed or bundled into production.
 
 Official values already present in contract configuration:
 
 - Robinhood Chain: `4663`
+- WarroomGame: `0xE0061A192b93546BeC4A2f4Da41E7E0fB344780d` (deployed at block `61815288`)
 - PLTR Robinhood Token: `0x894E1EC2D74FFE5AEF8Dc8A9e84686acCB964F2A`
 - Pons V2 Fee Escrow: `0xd3AFEB2a57f70eF218Aa82451c51B2fb0416Ac9e`
 
