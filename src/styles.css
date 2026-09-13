@@ -642,6 +642,27 @@ button{min-height:44px}
 .rank-progress{margin-top:9px;max-width:340px}
 .rank-progress-label{margin-top:5px}
 .rank-actions{display:grid;gap:6px}
+.rank-enter{opacity:0;animation:rankRowIn 430ms var(--decel) forwards}
+.seats i{opacity:0;animation:seatIn 300ms var(--spring) forwards}
+.general-enter{opacity:0;animation:rankRowIn 390ms var(--decel) forwards}
+.rung.cur::after{content:'';position:absolute;inset:0;pointer-events:none;box-shadow:inset 3px 0 0 var(--amber);animation:rankCurrent 2.2s ease-in-out infinite}
+.rung{position:relative}
+@keyframes rankRowIn{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:none}}
+@keyframes seatIn{from{opacity:0;transform:scaleY(.1)}to{opacity:1;transform:scaleY(1)}}
+@keyframes rankCurrent{0%,100%{opacity:.25}50%{opacity:1}}
+.rank-promotion-l{position:fixed;inset:0;z-index:92;display:grid;place-items:center;pointer-events:none;background:rgba(4,7,9,.58);animation:promotionVeil 1.8s both}
+.rank-promotion{width:min(430px,calc(100vw - 32px));padding:28px;border:1px solid var(--amber);background:rgba(14,18,22,.96);text-align:center;box-shadow:0 0 80px rgba(255,176,32,.14);animation:promotionCard 1.8s var(--spring) both}
+.rank-orbit{position:relative;width:112px;height:112px;margin:0 auto 18px;display:grid;place-items:center;border:1px solid var(--line2);transform:rotate(45deg)}
+.rank-orbit::before,.rank-orbit::after{content:'';position:absolute;inset:10px;border:1px solid var(--amber);animation:promotionOrbit 1.4s ease-in-out both}
+.rank-orbit::after{inset:22px;border-color:var(--fed);animation-direction:reverse}
+.rank-orbit i{position:absolute;width:7px;height:7px;background:var(--amber);animation:pulse 700ms ease-in-out infinite}
+.rank-orbit i:first-child{left:-4px;top:50%}.rank-orbit i:nth-child(2){right:-4px;top:50%}
+.rank-orbit span{font-family:var(--mono);font-size:34px;color:var(--ink);transform:rotate(-45deg)}
+.rank-promotion-name{font-size:36px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--amber);margin:7px 0 2px}
+.rank-promotion-mult{font-family:var(--mono);font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--fed);margin-bottom:14px}
+@keyframes promotionVeil{0%{opacity:0}10%,74%{opacity:1}100%{opacity:0}}
+@keyframes promotionCard{0%{opacity:0;transform:scale(.72)}18%,75%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.05)}}
+@keyframes promotionOrbit{0%{opacity:0;transform:rotate(-90deg) scale(.5)}40%,100%{opacity:1;transform:rotate(0) scale(1)}}
 .seat-copy{margin-top:5px}
 .rank-explain{margin-top:14px}
 .rank-explain .panel-b p{font-size:13px;line-height:1.55;color:var(--dim);margin-bottom:12px}

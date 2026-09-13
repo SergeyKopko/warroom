@@ -12,7 +12,7 @@ import {
 } from 'viem'
 import { applyCors, checkRateLimit, setRateLimitHeaders } from '../../src/server/http.js'
 
-const APP_URL = 'https://warroom-eosin.vercel.app'
+const APP_URL = 'https://www.war-room.tech'
 const ranks = ['Recruit', 'Captain', 'Major', 'Colonel', 'General'] as const
 const uint256Input = parseAbiParameters('uint256')
 const commanderOutput = parseAbiParameters('uint8,uint8,uint32,uint32,uint64,uint64,uint32,uint8,uint32,uint256,uint256,uint256')

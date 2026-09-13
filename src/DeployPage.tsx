@@ -14,7 +14,7 @@ import artifact from '../artifacts/WarroomGame.json'
 import { CONTRACTS, EXPLORER, robinhood } from './config'
 import { getInjectedProvider } from './wallet'
 
-const METADATA_BASE_URI = 'https://warroom-eosin.vercel.app/api/metadata/'
+const METADATA_BASE_URI = 'https://www.war-room.tech/api/metadata/'
 
 function short(address?: string) {
   return address ? `${address.slice(0, 8)}…${address.slice(-6)}` : '—'

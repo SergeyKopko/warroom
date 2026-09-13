@@ -21,6 +21,7 @@ import { DocsPage } from './DocsPage'
 import { CONTRACTS, EXPLORER, EXTRA_SHOT_PRICE, FREE_SHOT_COOLDOWN, MINT_PRICE, MISSILES, RANKS, isConfigured } from './config'
 import type { Activity, Commander, Screen } from './types'
 import { useWarroom } from './useWarroom'
+import { destroyedPercent } from './shared/target'
 
 const PAIR = 'WAR / PLTR'
 const X_URL = 'https://x.com'
@@ -302,7 +303,7 @@ export default function App() {
 type State = ReturnType<typeof useWarroom>['state']
 
 function Landing({ state, selected, tick, onEnter, onDocs, onRoster, onMint }: { state: State; selected?: Commander; tick: number; onEnter: () => void; onDocs: () => void; onRoster: () => void; onMint: () => void }) {
-  const integrity = Number(state.targetHp * 10_000n / state.targetMaxHp) / 100
+  const destroyed = destroyedPercent(state.targetHp, state.targetMaxHp)
   const ticker = [
     ['Active commanders', state.round.totalWeight.toLocaleString()],
     ['Launches', state.totalLaunches.toLocaleString()],
@@ -313,7 +314,7 @@ function Landing({ state, selected, tick, onEnter, onDocs, onRoster, onMint }: {
     ['Pair', PAIR],
   ]
   const stats = [
-    ['Enemy integrity', `${integrity.toFixed(1)}%`],
+    ['Target destroyed', `${destroyed.toFixed(1)}%`],
     ['WAR burned', shortToken(state.totalBurned)],
     ['Rewards pool', `${token(state.creatorFees)} PLTR`],
     ['Active commanders', state.round.totalWeight.toLocaleString()],
@@ -359,7 +360,7 @@ function Landing({ state, selected, tick, onEnter, onDocs, onRoster, onMint }: {
       <div className="page landing-page">
         <EnemyPanel state={state} />
         <div className="warlayout landing-board">
-          <BattlePlot integrity={integrity} legend="landing" />
+          <BattlePlot integrity={destroyed} legend="landing" />
           <Feed items={state.activity} tick={tick} maxHeight={420} />
         </div>
         <div className="stepline">
@@ -382,12 +383,13 @@ function Landing({ state, selected, tick, onEnter, onDocs, onRoster, onMint }: {
 }
 
 function EnemyPanel({ state }: { state: State }) {
-  const integrity = Number(state.targetHp * 10_000n / state.targetMaxHp) / 100
-  const damage = state.targetMaxHp - state.targetHp
-  return <section className="hp-wrap" aria-label={`Enemy integrity ${integrity.toFixed(1)} percent`}>
-    <div className="hp-top"><div><div className="eyebrow">Shared target · cycle {state.targetCycle}</div><div className="eyebrow enemy-integrity-label">Enemy integrity</div><div className="big rep">{integrity.toFixed(1)}<span>%</span></div></div><div className="enemy-damage"><div className="eyebrow">Damage this cycle</div><div className="num">{damage.toLocaleString()}</div></div></div>
-    <div className="hp-track"><div className="hp-fill" style={{ transform: `scaleX(${Math.max(0, Math.min(1, integrity / 100)).toFixed(4)})` }} /></div>
-    <div className="hp-meta eyebrow"><span>{state.targetHp.toLocaleString()} HP remaining</span><span>At zero the target resets and cycle {String(state.targetCycle + 1).padStart(2, '0')} begins</span></div>
+  const destroyed = destroyedPercent(state.targetHp, state.targetMaxHp)
+  const damage = state.targetMaxHp > state.targetHp ? state.targetMaxHp - state.targetHp : 0n
+  const fill = Math.max(0, Math.min(1, destroyed / 100))
+  return <section className="hp-wrap" aria-label={`Target destroyed ${destroyed.toFixed(1)} percent`}>
+    <div className="hp-top"><div><div className="eyebrow">Shared target · cycle {state.targetCycle}</div><div className="eyebrow enemy-integrity-label">Destroyed</div><div className="big rep">{destroyed.toFixed(1)}<span>%</span></div></div><div className="enemy-damage"><div className="eyebrow">Damage this cycle</div><div className="num">{damage.toLocaleString()}</div></div></div>
+    <div className="hp-track"><div className="hp-fill" style={{ transform: `scaleX(${fill.toFixed(4)})` }} /></div>
+    <div className="hp-meta eyebrow"><span>{state.targetHp.toLocaleString()} / {state.targetMaxHp.toLocaleString()} HP remaining</span><span>At zero the target resets and cycle {String(state.targetCycle + 1).padStart(2, '0')} begins</span></div>
   </section>
 }
 
@@ -409,7 +411,7 @@ function PlayPage({ state, selected, tick, onLaunch, onMint, onRoster }: { state
   const cooldown = Math.max(0, selected.lastLaunchAt + FREE_SHOT_COOLDOWN - tick)
   const today = Math.floor(tick / 86_400)
   const extras = selected.extraDay === today ? selected.extraCount : 0
-  const integrity = Number(state.targetHp * 10_000n / state.targetMaxHp) / 100
+  const destroyed = destroyedPercent(state.targetHp, state.targetMaxHp)
   const combinedWeight = state.commanders.reduce((sum, commander) => sum + (commander.activeRound === state.round.id ? RANKS[commander.rank].multiplier : 0n), 0n)
   const fire = async (paid: boolean) => {
     try {
@@ -428,7 +430,7 @@ function PlayPage({ state, selected, tick, onLaunch, onMint, onRoster }: { state
     <EnemyPanel state={state} />
     <div className="warlayout">
       <div>
-        <BattlePlot ref={plotRef} integrity={integrity} legend="battle" caption={state.demo ? 'DEMO SPEED · LOCAL SIMULATION' : 'ROBINHOOD CHAIN · BLOCK FINALITY'} />
+        <BattlePlot ref={plotRef} integrity={destroyed} legend="battle" caption={state.demo ? 'DEMO SPEED · LOCAL SIMULATION' : 'ROBINHOOD CHAIN · BLOCK FINALITY'} />
         <div className="bigfire">
           <button className="launch" disabled={cooldown > 0 || Boolean(state.pendingAction)} onClick={() => void fire(false)}>{cooldown ? 'Reloading' : 'Launch'}<span className="cd">{cooldown ? `next launch in ${countdown(selected.lastLaunchAt + FREE_SHOT_COOLDOWN, tick)}` : `Level ${missile.level} · ${missile.damage.toLocaleString()} damage · 70% hit`}</span></button>
           <button className="btn btn-amber paid-launch" disabled={extras >= 3 || state.warBalance < EXTRA_SHOT_PRICE || Boolean(state.pendingAction)} onClick={() => void fire(true)}>Launch now<span>10,000 WAR · {3 - extras} left today</span></button>
@@ -473,9 +475,23 @@ function UpgradePage({ state, selected, onUpgrade, onMint }: { state: State; sel
 }
 
 function RankPage({ state, selected, onRankUp, onMint }: { state: State; selected?: Commander; onRankUp: (purchased: boolean) => Promise<unknown>; onMint: () => void }) {
+  const [promotion, setPromotion] = useState<{ rank: number; purchased: boolean; at: number }>()
+  useEffect(() => {
+    if (!promotion) return
+    const timer = window.setTimeout(() => setPromotion(undefined), 1_850)
+    return () => window.clearTimeout(timer)
+  }, [promotion])
   if (!selected) return <div className="page"><PageHead title="Rank" copy="Rank multiplies your share of every reward round." /><EmptyGate onMint={onMint} /></div>
   const ageDays = Math.floor((Date.now() / 1000 - selected.mintedAt) / 86_400)
+  const promote = async (purchased: boolean) => {
+    const promotedRank = Math.min(4, selected.rank + 1)
+    try {
+      await onRankUp(purchased)
+      setPromotion({ rank: promotedRank, purchased, at: Date.now() })
+    } catch { /* The shared error toast handles rejected and reverted transactions. */ }
+  }
   return <div className="page">
+    {promotion && <div className="rank-promotion-l" role="status" aria-live="polite" key={promotion.at}><div className="rank-promotion"><div className="rank-orbit"><i /><i /><span>{['I', 'II', 'III', 'IV', 'V'][promotion.rank]}</span></div><div className="eyebrow">On-chain promotion confirmed</div><div className="rank-promotion-name">{RANKS[promotion.rank].name}</div><div className="rank-promotion-mult">{Number(RANKS[promotion.rank].multiplier) / 100}× rewards</div><div className="eyebrow">{promotion.purchased ? 'Commission purchased with WAR' : promotion.rank === 4 ? 'General trial completed' : 'Promotion earned'}</div></div></div>}
     <PageHead title="Rank" copy="Rank does one thing: it multiplies your share of the rewards. You can earn a rank with hits and time, or buy it outright with WAR — except General, which is only ever taken by trial." tag={<span className="tag tag-amb">Your rank gives you {Number(RANKS[selected.rank].multiplier) / 100}x rewards</span>} />
     <div className="ladder">{RANKS.map((rank, index) => {
       const current = selected.rank === index
@@ -487,11 +503,11 @@ function RankPage({ state, selected, onRankUp, onMint }: { state: State; selecte
       const earnedReady = next && hitsReady && ageReady && state.warBalance >= rank.earned && !full && index < 4
       const buyReady = next && rank.buy > 0n && state.warBalance >= rank.buy && !full
       const trialReady = next && index === 4 && !full && state.warBalance >= 800_000n * 10n ** 18n
-      return <div className={`rung ${current ? 'cur' : ''} ${done ? 'done' : ''}`} key={rank.name}>
+      return <div className={`rung rank-enter ${current ? 'cur' : ''} ${done ? 'done' : ''}`} style={{ animationDelay: `${index * 55}ms` }} key={rank.name}>
         <div className="chev"><b>{['I', 'II', 'III', 'IV', 'V'][index]}</b>{current ? 'YOU' : done ? 'HELD' : ''}</div>
-        <div><h4>{rank.name}{index === 4 && <span className="eyebrow"> — trial only, even when a seat is empty</span>}</h4><div className="req">{index === 0 ? 'Issued at mint' : index === 4 ? 'Ten seats in the whole game. A Colonel takes one by entering the General trial.' : `${rank.hits} successful hits · ${rank.days} day${rank.days > 1 ? 's' : ''} · ${shortToken(rank.earned)} WAR`}</div>{rank.seats !== null && <><div className="seats">{Array.from({ length: rank.seats }, (_, seat) => <i className={seat < (state.rankPopulation[index] || 0) ? 'taken' : 'free'} key={seat} />)}</div><div className="eyebrow seat-copy">{state.rankPopulation[index] || 0} / {rank.seats} seats occupied{full ? ' — full' : ''}</div></>}{next && index < 4 && !hitsReady && <><div className="bar rank-progress"><i style={{ transform: `scaleX(${Math.min(1, selected.hits / rank.hits).toFixed(4)})` }} /></div><div className="eyebrow rank-progress-label">{selected.hits} / {rank.hits} hits</div></>}</div>
+        <div><h4>{rank.name}{index === 4 && <span className="eyebrow"> — trial only, even when a seat is empty</span>}</h4><div className="req">{index === 0 ? 'Issued at mint' : index === 4 ? 'Ten seats in the whole game. A Colonel takes one by entering the General trial.' : `${rank.hits} successful hits · ${rank.days} day${rank.days > 1 ? 's' : ''} · ${shortToken(rank.earned)} WAR`}</div>{rank.seats !== null && <><div className="seats">{Array.from({ length: rank.seats }, (_, seat) => <i className={seat < (state.rankPopulation[index] || 0) ? 'taken' : 'free'} style={{ animationDelay: `${index * 70 + Math.min(seat, 30) * 12}ms` }} key={seat} />)}</div><div className="eyebrow seat-copy">{state.rankPopulation[index] || 0} / {rank.seats} seats occupied{full ? ' — full' : ''}</div></>}{next && index < 4 && !hitsReady && <><div className="bar rank-progress"><i style={{ transform: `scaleX(${Math.min(1, selected.hits / rank.hits).toFixed(4)})` }} /></div><div className="eyebrow rank-progress-label">{selected.hits} / {rank.hits} hits</div></>}</div>
         <div className="mult"><span>REWARDS</span>{Number(rank.multiplier) / 100}×</div>
-        <div className="rank-actions">{done ? <span className="tag tag-off">Passed</span> : current ? <span className="tag tag-amb">Current</span> : index === 4 ? <button className={`btn btn-sm btn-block ${trialReady ? 'btn-amber' : ''}`} disabled={!trialReady || Boolean(state.pendingAction)} onClick={() => void onRankUp(false)}>{!next ? 'Colonels only' : full ? 'Seats full' : state.warBalance < 800_000n * 10n ** 18n ? 'Not enough WAR' : 'Enter trial · 800K WAR'}</button> : next ? <><button className={`btn btn-sm btn-block ${earnedReady ? 'btn-fed' : ''}`} disabled={!earnedReady || Boolean(state.pendingAction)} onClick={() => void onRankUp(false)}>{!hitsReady ? `${rank.hits - selected.hits} more hits` : !ageReady ? `${rank.days - ageDays}d to wait` : state.warBalance < rank.earned ? 'Not enough WAR' : `Earn it · ${shortToken(rank.earned)} WAR`}</button><button className={`btn btn-sm btn-block ${buyReady ? 'btn-amber' : ''}`} disabled={!buyReady || Boolean(state.pendingAction)} onClick={() => void onRankUp(true)}>Buy rank · {shortToken(rank.buy)} WAR</button></> : <span className="tag tag-off">Locked</span>}</div>
+        <div className="rank-actions">{done ? <span className="tag tag-off">Passed</span> : current ? <span className="tag tag-amb">Current</span> : index === 4 ? <button className={`btn btn-sm btn-block ${trialReady ? 'btn-amber' : ''}`} disabled={!trialReady || Boolean(state.pendingAction)} onClick={() => void promote(false)}>{!next ? 'Colonels only' : full ? 'Seats full' : state.warBalance < 800_000n * 10n ** 18n ? 'Not enough WAR' : 'Enter trial · 800K WAR'}</button> : next ? <><button className={`btn btn-sm btn-block ${earnedReady ? 'btn-fed' : ''}`} disabled={!earnedReady || Boolean(state.pendingAction)} onClick={() => void promote(false)}>{!hitsReady ? `${rank.hits - selected.hits} more hits` : !ageReady ? `${rank.days - ageDays}d to wait` : state.warBalance < rank.earned ? 'Not enough WAR' : `Earn it · ${shortToken(rank.earned)} WAR`}</button><button className={`btn btn-sm btn-block ${buyReady ? 'btn-amber' : ''}`} disabled={!buyReady || Boolean(state.pendingAction)} onClick={() => void promote(true)}>Buy rank · {shortToken(rank.buy)} WAR</button></> : <span className="tag tag-off">Locked</span>}</div>
       </div>
     })}</div>
     <div className="grid2 rank-explain">
@@ -505,11 +521,11 @@ function RankPage({ state, selected, onRankUp, onMint }: { state: State; selecte
         const occupied = index < held
         const firstOpen = index === held && held < 10
         const canTrial = selected.rank === 3 && firstOpen && state.warBalance >= 800_000n * 10n ** 18n
-        return <div className="gen-row" key={index}>
+        return <div className={`gen-row general-enter ${occupied ? 'occupied' : ''}`} style={{ animationDelay: `${index * 45}ms` }} key={index}>
           <div className="slot">#{String(index + 1).padStart(2, '0')}</div>
           <div className="cmdr">{occupied ? <CommanderGlyph id={BigInt(900 + index)} size={22} /> : <span className="av vacant" />}<div><div className={`seat-name ${occupied ? '' : 'dim'}`}>{occupied ? 'Seat held' : 'Vacant seat'}</div><div className="eyebrow">{occupied ? 'General on duty' : 'No one holds it'}</div></div></div>
           <div><div className="eyebrow">Status</div><div className="num seat-status">{occupied ? 'Held' : 'Open'}</div></div>
-          <div className="seat-action">{occupied ? <span className="tag tag-off">Occupied</span> : firstOpen ? <button className={`btn btn-sm ${canTrial ? 'btn-amber' : ''}`} disabled={!canTrial || Boolean(state.pendingAction)} onClick={() => void onRankUp(false)}>{selected.rank !== 3 ? 'Colonels only' : held >= 10 ? 'Seats full' : state.warBalance < 800_000n * 10n ** 18n ? 'Deposit too high' : 'Enter trial'}</button> : <span className="tag tag-off">Open</span>}</div>
+          <div className="seat-action">{occupied ? <span className="tag tag-off">Occupied</span> : firstOpen ? <button className={`btn btn-sm ${canTrial ? 'btn-amber' : ''}`} disabled={!canTrial || Boolean(state.pendingAction)} onClick={() => void promote(false)}>{selected.rank !== 3 ? 'Colonels only' : held >= 10 ? 'Seats full' : state.warBalance < 800_000n * 10n ** 18n ? 'Deposit too high' : 'Enter trial'}</button> : <span className="tag tag-off">Open</span>}</div>
         </div>
       })}
     </section>
@@ -790,7 +806,7 @@ function ActivityRow({ item, tick }: { item: Activity; tick: number }) {
 
 function ProtocolContracts() {
   const rows = [
-    { key: 'NFT', name: 'Commander NFT — collection', addr: CONTRACTS.game, note: '1,200 max · no wallet limit · rank resets on transfer' },
+    { key: 'NFT', name: 'Commander NFT — collection', addr: CONTRACTS.game, note: '1,200 max · no wallet limit · progress follows the NFT' },
     { key: 'Token', name: 'WAR token', addr: CONTRACTS.war, note: 'Fixed supply 1,000,000,000 · spent to play · 50% burned' },
     { key: 'Rewards', name: 'Reward pool', addr: CONTRACTS.pltr, note: 'Trading fees in · claimable rewards out' },
   ] as const
@@ -817,7 +833,7 @@ function MintModal({ state, quantity, setQuantity, onClose, onMint }: { state: S
   const transactionsEnabled = isConfigured || state.demo
   const canMint = transactionsEnabled && remaining > 0 && state.connected && state.warBalance >= cost && !state.pendingAction
   useEffect(() => { const close = (event: KeyboardEvent) => event.key === 'Escape' && onClose(); window.addEventListener('keydown', close); return () => window.removeEventListener('keydown', close) }, [onClose])
-  return <div className="modal-l" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="mint-title"><div className="modal-h"><h3 id="mint-title">{state.commanders.length ? 'Mint more Commanders' : 'Mint a Commander'}</h3><button className="btn btn-sm" onClick={onClose}>ESC</button></div><div className="modal-b"><div className="nftcard"><div className="body"><CommanderGlyph id={BigInt(state.minted + 1)} size={54} /><div><div className="eyebrow">Commander NFT · a separate character</div><div className="nft-title">Your pass into the game</div><p>The token is the character: rank, missile level, hits, damage and credited rewards all live on it. Every Commander progresses separately.</p></div></div></div><div className="eyebrow modal-label">How many</div><div className="qty"><button disabled={quantity <= 1} onClick={() => setQuantity(Math.max(1, quantity - 1))}>−</button><div className="n">{quantity}<small>{quantity > 1 ? 'separate characters' : 'commander'}</small></div><button disabled={quantity >= maxQuantity} onClick={() => setQuantity(Math.min(maxQuantity, quantity + 1))}>+</button></div><div className="presets">{[1, 2, 5, 10].map((value) => <button className={quantity === value ? 'on' : ''} disabled={value > maxQuantity} onClick={() => setQuantity(value)} key={value}>{value}</button>)}<button disabled={maxQuantity <= 1} onClick={() => setQuantity(maxQuantity)}>Max {maxQuantity}</button></div><div className="modal-supply"><div><span className="eyebrow">Supply</span><span className="num">{state.minted.toLocaleString()} / {state.maxSupply.toLocaleString()} minted</span></div><div className="bar"><i style={{ transform: `scaleX(${state.minted / state.maxSupply})` }} /></div><div className="eyebrow">{remaining.toLocaleString()} left. There will never be more than {state.maxSupply.toLocaleString()}.</div></div><div className="ledger modal-ledger"><div><span>Wallet balance</span><span className="amb">{token(state.warBalance)} WAR</span></div><div><span>Price each</span><span>100,000 WAR</span></div><div><span>{quantity} × 100,000</span><span>{shortToken(cost)} WAR</span></div><div className="burn"><span>Burned on mint</span><span>{shortToken(cost / 2n)} WAR · 50%</span></div><div><span>Treasury, economy and rewards</span><span>{shortToken(cost / 2n)} WAR</span></div><div><span>Each starts as</span><span>Recruit · Missile Level 1</span></div><div><span>Per wallet</span><span>No limit</span></div></div>{!transactionsEnabled && <p className="modal-note">The WARROOM contract has not been deployed. No transaction will be created.</p>}</div><div className="modal-f"><button className={`btn btn-lg btn-block ${canMint ? 'btn-amber' : ''}`} disabled={!canMint} onClick={() => void onMint()}>{!transactionsEnabled ? 'Awaiting contract deployment' : remaining <= 0 ? 'Sold out' : state.warBalance < cost ? `Not enough WAR — need ${shortToken(cost)}` : `Mint ${quantity} Commander${quantity > 1 ? 's' : ''} — ${shortToken(cost)} WAR`}</button><div className="eyebrow">One transaction. Each token needs its own launch every round to earn.</div></div></section></div>
+  return <div className="modal-l" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="mint-title"><div className="modal-h"><h3 id="mint-title">{state.commanders.length ? 'Mint more Commanders' : 'Mint a Commander'}</h3><button className="btn btn-sm" onClick={onClose}>ESC</button></div><div className="modal-b"><div className="nftcard"><div className="body"><CommanderGlyph id={BigInt(state.minted + 1)} size={54} /><div><div className="eyebrow">Commander NFT · a separate character</div><div className="nft-title">Your pass into the game</div><p>The token is the character: rank, missile level, hits, damage and credited rewards all live on it. Every Commander progresses separately.</p></div></div></div><div className="eyebrow modal-label">How many</div><div className="qty"><button disabled={quantity <= 1} onClick={() => setQuantity(Math.max(1, quantity - 1))}>−</button><div className="n">{quantity}<small>{quantity > 1 ? 'separate characters' : 'commander'}</small></div><button disabled={quantity >= maxQuantity} onClick={() => setQuantity(Math.min(maxQuantity, quantity + 1))}>+</button></div><div className="presets">{[1, 2, 5, 10].map((value) => <button className={quantity === value ? 'on' : ''} disabled={value > maxQuantity} onClick={() => setQuantity(value)} key={value}>{value}</button>)}<button disabled={maxQuantity <= 1} onClick={() => setQuantity(maxQuantity)}>Max {maxQuantity}</button></div><div className="modal-supply"><div><span className="eyebrow">Supply</span><span className="num">{state.minted.toLocaleString()} / {state.maxSupply.toLocaleString()} minted</span></div><div className="bar"><i style={{ transform: `scaleX(${state.minted / state.maxSupply})` }} /></div><div className="eyebrow">{remaining.toLocaleString()} left. There will never be more than {state.maxSupply.toLocaleString()}.</div></div><div className="ledger modal-ledger"><div><span>Wallet balance</span><span className="amb">{token(state.warBalance)} WAR</span></div><div><span>Price each</span><span>100,000 WAR</span></div><div><span>{quantity} × 100,000</span><span>{shortToken(cost)} WAR</span></div><div className="burn"><span>Burned on mint</span><span>{shortToken(cost / 2n)} WAR · 50%</span></div><div><span>Treasury</span><span>{shortToken(cost / 2n)} WAR · 50%</span></div><div><span>Each starts as</span><span>Recruit · Missile Level 1</span></div><div><span>Per wallet</span><span>No limit</span></div></div>{!transactionsEnabled && <p className="modal-note">The WARROOM contract has not been deployed. No transaction will be created.</p>}</div><div className="modal-f"><button className={`btn btn-lg btn-block ${canMint ? 'btn-amber' : ''}`} disabled={!canMint} onClick={() => void onMint()}>{!transactionsEnabled ? 'Awaiting contract deployment' : remaining <= 0 ? 'Sold out' : state.warBalance < cost ? `Not enough WAR — need ${shortToken(cost)}` : `Mint ${quantity} Commander${quantity > 1 ? 's' : ''} — ${shortToken(cost)} WAR`}</button><div className="eyebrow">One transaction. Each token needs its own launch every round to earn.</div></div></section></div>
 }
 
 function RosterModal({ state, selected, onClose, onSelect, onMint, onClaimAll, onRevoke }: { state: State; selected?: Commander; onClose: () => void; onSelect: (id: bigint) => void; onMint: () => void; onClaimAll: () => Promise<unknown>; onRevoke: () => Promise<unknown> }) {

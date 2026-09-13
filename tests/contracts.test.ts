@@ -134,6 +134,8 @@ describe('WarroomGame WAR spending', () => {
     const balance = (address: Address) => publicClient.readContract({ address: war, abi: artifacts.erc20.abi, functionName: 'balanceOf', args: [address] }) as Promise<bigint>
 
     await writeGame('mint', [1n])
+    expect(await publicClient.readContract({ address: game, abi: artifacts.game.abi, functionName: 'TARGET_MAX_HP' })).toBe(200_000n)
+    expect(await publicClient.readContract({ address: game, abi: artifacts.game.abi, functionName: 'targetHp' })).toBe(200_000n)
     expect(await publicClient.readContract({ address: game, abi: artifacts.game.abi, functionName: 'ownerOf', args: [1n] })).toBe(player)
     expect(await publicClient.readContract({ address: game, abi: artifacts.game.abi, functionName: 'tokenURI', args: [1n] })).toBe('https://warroom.example/api/metadata/1')
     expect(await balance(burnAddress)).toBe(parseEther('50000'))

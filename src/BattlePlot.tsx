@@ -21,6 +21,7 @@ export type BattlePlotHandle = {
 }
 
 type Props = {
+  /** 0–100 share of the target already destroyed this cycle. */
   integrity: number
   legend?: 'landing' | 'battle'
   caption?: string
@@ -230,7 +231,7 @@ export const BattlePlot = forwardRef<BattlePlotHandle, Props>(function BattlePlo
 
   return (
     <div className="plotwrap">
-      <canvas id="plot" ref={canvasRef} width={W} height={H} role="img" aria-label={`Live target map. Enemy integrity ${integrity.toFixed(1)} percent.`} />
+      <canvas id="plot" ref={canvasRef} width={W} height={H} role="img" aria-label={`Live target map. Target destroyed ${integrity.toFixed(1)} percent.`} />
       <div className="plot-ov" />
       <span className="plot-corner pc-tl">LIVE PLOT · FICTIONAL TARGET</span>
       {caption && <span className="plot-corner pc-bl">{caption}</span>}

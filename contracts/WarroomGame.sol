@@ -23,7 +23,7 @@ contract WarroomGame is ERC721Enumerable, Ownable2Step, ReentrancyGuard {
     uint256 public constant MINT_PRICE = 100_000 ether;
     uint256 public constant EXTRA_SHOT_PRICE = 10_000 ether;
     uint256 public constant GENERAL_TRIAL_PRICE = 800_000 ether;
-    uint256 public constant TARGET_MAX_HP = 100_000_000;
+    uint256 public constant TARGET_MAX_HP = 200_000;
     uint256 public constant ROUND_DURATION = 5 hours;
     uint256 public constant FREE_SHOT_COOLDOWN = 4 hours;
     uint256 public constant BPS = 10_000;

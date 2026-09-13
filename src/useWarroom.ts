@@ -74,8 +74,8 @@ const initialSnapshot: GameSnapshot = {
   allowance: 0n,
   minted: isLocalDemo ? 341 : 0,
   maxSupply: 1200,
-  targetHp: isLocalDemo ? 64_200_000n : 100_000_000n,
-  targetMaxHp: 100_000_000n,
+  targetHp: isLocalDemo ? 71_600n : 200_000n,
+  targetMaxHp: 200_000n,
   targetCycle: isLocalDemo ? 11 : 0,
   totalBurned: isLocalDemo ? WAR(38_421_000) : 0n,
   totalLaunches: isLocalDemo ? 214_800n : 0n,
@@ -99,6 +99,10 @@ function deserializeDemo(): GameSnapshot | undefined {
       ...saved,
       ready: false,
       loading: true,
+      targetMaxHp: 200_000n,
+      targetHp: typeof saved.targetHp === 'bigint' && saved.targetHp > 0n && saved.targetHp <= 200_000n
+        ? saved.targetHp
+        : initialSnapshot.targetHp,
       round: { ...initialSnapshot.round, ...saved.round },
       claimableByCommander: { ...initialSnapshot.claimableByCommander, ...saved.claimableByCommander },
       rankPopulation: Array.isArray(saved.rankPopulation) && saved.rankPopulation.length >= 5

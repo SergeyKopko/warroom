@@ -27,6 +27,7 @@ The database is the common source for every visitor. A wallet is not required to
 ## Game UI and on-chain state
 
 - `Play`, `Arsenal`, `Rank` and `Rewards` read the selected Commander's current struct directly from WarroomGame. A successful receipt triggers an immediate reread; a 15-second refresh also catches transactions made in another tab.
+- New WarroomGame deployments use a shared target with `200,000 HP`. The interface shows destruction progress, so a fresh target starts at `0% destroyed` with an empty bar and fills toward `100%` as damage lands. `TARGET_MAX_HP` is compiled into the contract; the existing deployed address keeps its original value until a replacement contract is deployed and configured.
 - Arsenal progress uses successful hits, not total launches. Missile levels unlock in order at 10, 30 and 75 hits and change on-chain damage to 250, 600 and 1,500.
 - Rank upgrades are real WarroomGame calls. Reward multipliers are 1x / 1.4x / 1.9x / 2.5x / 4x; Major, Colonel and General capacities are read from `rankPopulation`.
 - A Commander's round weight is snapshotted on its first launch in that round. A promotion made later applies to subsequent rounds.
