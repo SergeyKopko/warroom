@@ -517,163 +517,230 @@ function RewardsPage({ state, selected, tick, onClaim, onClaimAll, onClose, onLa
   const selectedClaimable = state.claimableByCommander[selected.id.toString()] ?? state.claimable
   const pool = state.creatorFees
   const clerkFee = pool * 5n / 1000n
-  const roundReward = pool - clerkFee
+  const roundReward = pool > clerkFee ? pool - clerkFee : 0n
   const myWeight = active ? rank.multiplier : 0n
   const estimated = active && state.round.totalWeight > 0n ? roundReward * rank.multiplier / state.round.totalWeight : 0n
   const combinedWeight = state.commanders.reduce((sum, commander) => sum + (commander.activeRound === state.round.id ? RANKS[commander.rank].multiplier : 0n), 0n)
   const combinedShare = state.round.totalWeight > 0n ? roundReward * combinedWeight / state.round.totalWeight : 0n
   const othersWeight = state.round.totalWeight > myWeight ? state.round.totalWeight - myWeight : 0n
   const closable = tick >= state.round.endsAt
-  const creditedRounds = state.roundHistory.filter((history) => history.commanderWeight > 0n).length
+  const historyShares = state.roundHistory.map((history) => {
+    const share = history.totalWeight > 0n ? history.reward * history.commanderWeight / history.totalWeight : 0n
+    return { history, share }
+  })
+  const accrued = historyShares.reduce((sum, row) => sum + row.share, 0n)
+  const withdrawn = historyShares.reduce((sum, row) => sum + (row.history.claimed ? row.share : 0n), 0n)
+  const creditedRounds = historyShares.filter((row) => row.share > 0n).length
+  const pltrLabel = (value: bigint) => `${token(value)} PLTR`
+
   return <div className="page">
-    <PageHead
-      title="Rewards"
-      copy="A share of the trading fees the protocol collects flows into the rewards contract. Every 5 hours a round closes, a snapshot is taken, and each commander's share is credited to their NFT. Nothing is sent automatically — you claim when you want, and everything credited since your last claim comes out in one transaction."
-      tag={<span className={`tag ${active ? 'tag-fed' : 'tag-rep'}`}>{active ? "In this round's snapshot" : 'Not in the snapshot — launch to qualify'}</span>}
-    />
-    <div className="grid2 rewards-grid">
-      <section className="panel objective">
+    <div className="page-head">
+      <div>
+        <h1>Rewards</h1>
+        <p>A share of the trading fees the protocol collects flows into the rewards contract. Every 5 hours a round closes, a snapshot is taken, and each commander's share is credited to their NFT. Nothing is sent automatically — you claim when you want, and everything credited since your last claim comes out in one transaction.</p>
+      </div>
+      <span className={`tag ${active ? 'tag-fed' : 'tag-rep'}`}>{active ? "In this round's snapshot" : 'Not in the snapshot — launch to qualify'}</span>
+    </div>
+
+    <div className="grid2" style={{ alignItems: 'start' }}>
+      <div className="panel objective" style={{ borderColor: 'var(--amber)' }}>
         <div className="panel-h" style={{ background: 'rgba(255,176,32,.1)', borderBottomColor: 'var(--amber)' }}>
           <h3 style={{ color: 'var(--amber)' }}>Available to claim</h3>
           <span className="eyebrow">{creditedRounds} credited rounds</span>
         </div>
         <div className="panel-b">
-          <div className="rewards-claim">
-            <div className="reward-number">{token(selectedClaimable)}</div>
-            <p>Sitting in the rewards contract, waiting for you</p>
-            <button className={`btn btn-lg btn-block ${selectedClaimable > 0n ? 'btn-amber' : ''}`} disabled={selectedClaimable === 0n || Boolean(state.pendingAction)} onClick={() => void onClaim()}>
-              {selectedClaimable > 0n ? `Claim ${token(selectedClaimable)} for #${selected.id}` : 'Nothing to claim yet'}
+          <div style={{ textAlign: 'center', padding: '16px 0 20px' }}>
+            <div className="num" style={{ fontSize: 42, fontWeight: 700, color: 'var(--amber)', lineHeight: 1.1 }}>{pltrLabel(selectedClaimable)}</div>
+            <div className="dim" style={{ fontSize: 13, marginTop: 7 }}>Sitting in the rewards contract, waiting for you</div>
+          </div>
+          <button className={`btn btn-lg btn-block ${selectedClaimable > 0n ? 'btn-amber' : ''}`} disabled={selectedClaimable === 0n || Boolean(state.pendingAction)} onClick={() => void onClaim()}>
+            {selectedClaimable > 0n ? `Claim ${pltrLabel(selectedClaimable)} for #${selected.id}` : 'Nothing to claim yet'}
+          </button>
+          {state.commanders.length > 1 && (
+            <button className={`btn btn-block ${totalClaimable > 0n ? 'btn-fed' : ''}`} style={{ marginTop: 10 }} disabled={totalClaimable === 0n || Boolean(state.pendingAction)} onClick={() => void onClaimAll()}>
+              Claim {pltrLabel(totalClaimable)} across all {state.commanders.length} commanders
             </button>
-            {state.commanders.length > 1 && (
-              <button className={`btn btn-block ${totalClaimable > 0n ? 'btn-fed' : ''}`} style={{ marginTop: 10 }} disabled={totalClaimable === 0n || Boolean(state.pendingAction)} onClick={() => void onClaimAll()}>
-                Claim {token(totalClaimable)} across all {state.commanders.length} commanders
-              </button>
-            )}
-          </div>
+          )}
           <div className="ledger" style={{ marginTop: 14 }}>
-            <div><span>Wallet PLTR balance</span><span>{token(state.pltrBalance)}</span></div>
-            <div><span>Available for #{selected.id}</span><span className="amb">{token(selectedClaimable)}</span></div>
-            {state.commanders.length > 1 && <div><span>Available across the wallet</span><span className="fed">{token(totalClaimable)}</span></div>}
+            <div><span>Credited to #{selected.id} in total</span><span>{pltrLabel(accrued)}</span></div>
+            <div><span>of which clerk fees</span><span>{pltrLabel(0n)}</span></div>
+            <div><span>Already withdrawn</span><span>{pltrLabel(withdrawn)}</span></div>
+            <div><span>Available for #{selected.id}</span><span className="amb">{pltrLabel(selectedClaimable)}</span></div>
+            {state.commanders.length > 1 && <div><span>Available across the wallet</span><span className="fed">{pltrLabel(totalClaimable)}</span></div>}
           </div>
-          <div className="eyebrow reward-history-note">Rounds you miss are simply not credited. Nothing you have earned ever expires.</div>
-          <div className="pltr-explain">
+          <div className="eyebrow" style={{ marginTop: 14 }}>Rounds you miss are simply not credited. Nothing you have earned ever expires.</div>
+          <div style={{ marginTop: 22, paddingTop: 20, borderTop: '1px solid var(--line)' }}>
             <div className="eyebrow">What PLTR is doing here</div>
-            <p>WAR is the fuel: you spend it to mint, to upgrade, to buy rank and to contest a seat, and half of it burns. Rewards come back in a different asset entirely — tokenized PLTR — so the token you spend is never the token being handed out. WAR only ever leaves circulation.</p>
-            <div className="ledger">
+            <p style={{ fontSize: 13.5, color: 'var(--dim)', lineHeight: 1.65, marginTop: 9 }}>
+              WAR is the fuel: you spend it to mint, to upgrade, to buy rank and to contest a seat, and half of it burns.
+              Rewards come back in a different asset entirely — tokenized PLTR — so the token you spend is never
+              the token being handed out. WAR only ever leaves circulation.
+            </p>
+            <div className="ledger" style={{ marginTop: 14 }}>
               <div><span>Spend to play</span><span>WAR</span></div>
               <div><span>Earn as rewards</span><span className="amb">Tokenized PLTR</span></div>
               <div><span>Market pair</span><span>{PAIR}</span></div>
             </div>
           </div>
         </div>
-      </section>
+      </div>
 
-      <section className={`panel ${closable ? 'objective' : ''}`}>
+      <div className="panel" style={closable ? { borderColor: 'var(--amber)' } : undefined}>
         <div className="panel-h">
           <h3>Round #{state.round.id}</h3>
-          <span className={`tag ${closable ? 'tag-amb' : 'tag-off'}`}>{closable ? 'Ready to close' : `Closes in ${countdown(state.round.endsAt, tick)}`}</span>
+          <span className="tag tag-amb">{closable ? 'Ready to close' : `Closes in ${countdown(state.round.endsAt, tick)}`}</span>
         </div>
         <div className="panel-b">
           {closable && (
             <>
-              <div className="notice" style={{ marginBottom: 14 }}>The timer has run out and nobody has triggered the round yet. Whoever sends the transaction keeps 0.5% of the pool — {token(clerkFee)} — on top of their own share.</div>
-              <button className="btn btn-lg btn-block btn-amber" style={{ marginBottom: 14 }} disabled={Boolean(state.pendingAction)} onClick={() => void onClose()}>Close round {state.round.id} and keep {token(clerkFee)}</button>
+              <div className="notice" style={{ marginBottom: 14 }}>
+                The timer has run out and nobody has triggered the round yet. Whoever sends the transaction keeps 0.5% of the pool — {pltrLabel(clerkFee)} — on top of their own share.
+              </div>
+              <button className="btn btn-lg btn-block btn-amber" style={{ marginBottom: 14 }} disabled={Boolean(state.pendingAction)} onClick={() => void onClose()}>
+                Close round {state.round.id} and keep {pltrLabel(clerkFee)}
+              </button>
             </>
           )}
           {!closable && !active && (
-            <button className="btn btn-block btn-fed" style={{ marginBottom: 14 }} disabled={Boolean(state.pendingAction)} onClick={() => void onLaunch()}>Launch once to enter this round</button>
+            <button className="btn btn-block btn-fed" style={{ marginBottom: 14 }} disabled={Boolean(state.pendingAction)} onClick={() => void onLaunch()}>
+              Launch once to enter this round
+            </button>
           )}
-          <div className="ledger round-ledger">
-            <div><span>Pool for this round</span><span className="amb">{token(pool)}</span></div>
-            <div><span>Clerk fee — 0.5% to whoever closes it</span><span>{token(clerkFee)}</span></div>
-            <div><span>Collected from fees</span><span>{token(pool)}</span></div>
-            <div><span>Weight of everyone else</span><span>{(Number(othersWeight) / 100).toLocaleString()}</span></div>
+          <div className="ledger">
+            <div><span>Pool for this round</span><span className="amb">{pltrLabel(pool)}</span></div>
+            <div><span>Clerk fee — 0.5% to whoever closes it</span><span>{pltrLabel(clerkFee)}</span></div>
+            <div><span>Collected from fees</span><span>{pltrLabel(pool)}</span></div>
+            <div><span>Carried from earlier rounds</span><span>{pltrLabel(0n)}</span></div>
+            <div><span>Weight of everyone else</span><span>{(Number(othersWeight) / 100).toLocaleString(undefined, { maximumFractionDigits: 1 })}</span></div>
             <div><span>Your rank</span><span>{rank.name} · {(Number(rank.multiplier) / 100).toFixed(1)}x</span></div>
-            <div><span>Weight of #{selected.id} this round</span><span className={myWeight ? 'amb' : 'rep'}>{(Number(myWeight) / 100).toFixed(1)}{myWeight ? '' : ' — no launch since the last close'}</span></div>
-            <div><span>Share of #{selected.id} if it closed now</span><span className="amb">{token(estimated)}</span></div>
+            <div>
+              <span>Weight of #{selected.id} this round</span>
+              <span className={myWeight ? 'amb' : 'rep'}>{(Number(myWeight) / 100).toFixed(1)}{myWeight ? '' : ' — no launch since the last close'}</span>
+            </div>
+            <div><span>Share of #{selected.id} if it closed now</span><span className="amb">{pltrLabel(estimated)}</span></div>
             {state.commanders.length > 1 && <>
               <div><span>Combined weight of your {state.commanders.length} commanders</span><span>{(Number(combinedWeight) / 100).toFixed(1)}x</span></div>
-              <div><span>Combined share if it closed now</span><span className="amb">{token(combinedShare)}</span></div>
+              <div><span>Combined share if it closed now</span><span className="amb">{pltrLabel(combinedShare)}</span></div>
             </>}
           </div>
-          <div className="stepline vertical">
+          <div className="stepline" style={{ flexDirection: 'column', border: 0, marginTop: 14 }}>
             {[
               ['Trading volume', 'WAR changes hands on the AMM'],
               ['Reward fees', 'A share of every trading fee lands in the contract'],
               ['Round closes every 5h', 'Anyone can trigger it and keep 0.5% of the pool'],
               ['Credited to your NFT', 'Claim it whenever you like'],
             ].map(([title, copy], index) => (
-              <div className="st" key={title}>
+              <div className="st" key={title} style={{ borderRight: 0, ...(index < 3 ? { borderBottom: '1px solid var(--line)' } : {}) }}>
                 <div className="n">STEP {index + 1}</div>
                 <div className="t">{title}</div>
-                <p>{copy}</p>
+                <div className="dim" style={{ fontSize: 12, marginTop: 3 }}>{copy}</div>
               </div>
             ))}
           </div>
         </div>
-      </section>
+      </div>
     </div>
 
     {state.commanders.length > 1 && (
-      <section className="panel commander-rewards">
+      <div className="panel" style={{ marginTop: 14 }}>
         <div className="panel-h"><h3>Your commanders</h3><span className="eyebrow">Every NFT is settled on its own</span></div>
         <table>
-          <thead><tr><th>Commander</th><th>Rank</th><th>Weight</th><th>In this round</th><th className="right">Available</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Commander</th>
+              <th>Rank</th>
+              <th>Weight</th>
+              <th>In this round</th>
+              <th>Credited</th>
+              <th style={{ textAlign: 'right' }}>Available</th>
+            </tr>
+          </thead>
           <tbody>
             {state.commanders.map((commander) => {
               const available = state.claimableByCommander[commander.id.toString()] ?? 0n
               return (
                 <tr className={commander.id === selected.id ? 'me' : ''} key={commander.id.toString()}>
-                  <td><div className="cmdr"><CommanderGlyph id={commander.id} /><div><div style={{ color: 'var(--ink)' }}>#{commander.id}</div><div className="eyebrow">Level {commander.missileLevel} · {commander.hits} hits</div></div></div></td>
+                  <td>
+                    <div className="cmdr">
+                      <CommanderGlyph id={commander.id} />
+                      <div>
+                        <div style={{ color: 'var(--ink)' }}>#{commander.id}</div>
+                        <div className="eyebrow">Level {commander.missileLevel} · {commander.hits} hits</div>
+                      </div>
+                    </div>
+                  </td>
                   <td>{RANKS[commander.rank].name}</td>
                   <td className="num">{(Number(RANKS[commander.rank].multiplier) / 100).toFixed(1)}x</td>
                   <td>{commander.activeRound === state.round.id ? <span className="tag tag-fed">In</span> : <span className="tag tag-off">Out</span>}</td>
-                  <td className="num right" style={{ color: available > 0n ? 'var(--fed)' : 'var(--faint)' }}>{available > 0n ? token(available) : '—'}</td>
+                  <td className="num">{commander.id === selected.id ? pltrLabel(accrued) : '—'}</td>
+                  <td className="num" style={{ textAlign: 'right', color: available > 0n ? 'var(--fed)' : 'var(--faint)' }}>{available > 0n ? pltrLabel(available) : '—'}</td>
                 </tr>
               )
             })}
           </tbody>
         </table>
-      </section>
+      </div>
     )}
 
-    <section className="panel recent-rounds">
+    <div className="panel" style={{ marginTop: 14 }}>
       <div className="panel-h"><h3>Recent rounds</h3><span className="eyebrow">One launch since the previous close puts you in the snapshot</span></div>
       {state.roundHistory.length ? (
         <table>
-          <thead><tr><th>Round</th><th>Pool</th><th>Clerk fee</th><th>Your weight</th><th className="right">Credited</th><th className="right">Result</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Round</th>
+              <th>Pool</th>
+              <th>Clerk fee</th>
+              <th>Your weight</th>
+              <th>Commanders in</th>
+              <th style={{ textAlign: 'right' }}>Credited</th>
+              <th style={{ textAlign: 'right' }}>Result</th>
+            </tr>
+          </thead>
           <tbody>
             {state.roundHistory.map((history) => {
               const tip = history.reward * 5n / 995n
               const share = history.totalWeight > 0n ? history.reward * history.commanderWeight / history.totalWeight : 0n
-              const status = history.commanderWeight === 0n ? 'Missed' : share === 0n ? 'Rolled over' : history.claimed ? 'Credited' : 'Credited'
+              const status = history.commanderWeight === 0n ? 'Missed' : share === 0n ? 'Rolled over' : 'Credited'
+              const commandersIn = history.totalWeight > 0n ? Math.max(1, Math.round(Number(history.totalWeight) / 100)) : 0
               return (
                 <tr key={history.id}>
                   <td className="num">#{history.id}</td>
-                  <td className="num">{token(history.reward)}</td>
-                  <td className="num dim">{history.reward ? token(tip) : '—'}</td>
+                  <td className="num">{pltrLabel(history.reward)}</td>
+                  <td className="num dim">{history.reward ? pltrLabel(tip) : '—'}</td>
                   <td className="num">{history.commanderWeight ? `${(Number(history.commanderWeight) / 100).toFixed(1)}x` : '0.0'}</td>
-                  <td className="num right">{share ? token(share) : '—'}</td>
-                  <td className="right"><span className={`tag ${status === 'Credited' ? 'tag-fed' : status === 'Rolled over' ? 'tag-amb' : 'tag-off'}`}>{status}</span></td>
+                  <td className="num">{commandersIn}</td>
+                  <td className="num" style={{ textAlign: 'right' }}>{share ? pltrLabel(share) : '—'}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    <span className={`tag ${status === 'Credited' ? 'tag-fed' : status === 'Rolled over' ? 'tag-amb' : 'tag-off'}`}>{status}</span>
+                  </td>
                 </tr>
               )
             })}
           </tbody>
         </table>
       ) : (
-        <div className="panel-b"><div className="eyebrow empty-rounds">No rounds have closed since you minted. The first one settles when the timer above runs out.</div></div>
+        <div className="panel-b">
+          <div className="eyebrow" style={{ textAlign: 'center', padding: '22px 0' }}>No rounds have closed since you minted. The first one settles when the timer above runs out.</div>
+        </div>
       )}
-    </section>
+    </div>
 
-    <div className="grid2 rewards-rules">
-      <section className="panel">
+    <div className="grid2" style={{ marginTop: 14 }}>
+      <div className="panel">
         <div className="panel-h"><h3>Weights</h3></div>
         <div className="panel-b">
-          <div className="ledger">{RANKS.map((item, index) => <div key={item.name}><span>{item.name}</span><span className={index === selected.rank ? 'amb' : ''}>{(Number(item.multiplier) / 100).toFixed(1)}x</span></div>)}</div>
-          <p>Your share is your weight divided by the weight of everyone in the snapshot. A General takes four times what a Recruit takes out of the same pool — but out of the same pool, not out of a bigger one.</p>
+          <div className="ledger">
+            {RANKS.map((item, index) => (
+              <div key={item.name}><span>{item.name}</span><span className={index === selected.rank ? 'amb' : ''}>{(Number(item.multiplier) / 100).toFixed(1)}x</span></div>
+            ))}
+          </div>
+          <p className="dim" style={{ fontSize: 13, lineHeight: 1.55, marginTop: 12 }}>
+            Your share is your weight divided by the weight of everyone in the snapshot. A General takes four times what a Recruit takes out of the same pool — but out of the same pool, not out of a bigger one.
+          </p>
         </div>
-      </section>
-      <section className="panel">
+      </div>
+      <div className="panel">
         <div className="panel-h"><h3>Rules worth knowing</h3></div>
         <div className="panel-b">
           <div className="ledger">
@@ -687,19 +754,19 @@ function RewardsPage({ state, selected, tick, onClaim, onClaimAll, onClose, onLa
             <div><span>Commanders per wallet</span><span>No limit</span></div>
             <div><span>Settlement</span><span>Per NFT, not per wallet</span></div>
           </div>
-          <div className="notice rewards-rule-notice">No trading volume means no fees and an empty pool. Rank sets the size of your share, it does not create one.</div>
+          <div className="notice" style={{ marginTop: 14 }}>No trading volume means no fees and an empty pool. Rank sets the size of your share, it does not create one.</div>
         </div>
-      </section>
+      </div>
     </div>
 
-    <section className="panel total-burned">
+    <div className="panel" style={{ marginTop: 14 }}>
       <div className="panel-h"><h3>Total WAR burned</h3><span className="eyebrow">Removed from supply permanently</span></div>
-      <div className="panel-b">
-        <b>{token(state.totalBurned, 18, 0)}</b>
-        <span className="eyebrow">Half of every WAR spent in the game is burned</span>
-        <p>You have burned {token(selected.warBurned, 18, 0)} WAR</p>
+      <div className="panel-b" style={{ textAlign: 'center', padding: 26 }}>
+        <div className="num" style={{ fontSize: 44, fontWeight: 700, letterSpacing: '.02em' }}>{token(state.totalBurned, 18, 0)}</div>
+        <div className="eyebrow" style={{ marginTop: 7 }}>Half of every WAR spent in the game is burned</div>
+        <div className="dim" style={{ fontSize: 13, marginTop: 9 }}>You have burned {token(selected.warBurned, 18, 0)} WAR</div>
       </div>
-    </section>
+    </div>
   </div>
 }
 

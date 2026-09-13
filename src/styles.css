@@ -647,17 +647,14 @@ button{min-height:44px}
 .rewards-grid{align-items:start}
 .rewards-claim{text-align:center}
 .reward-number{font-family:var(--mono);font-size:42px;font-weight:700;color:var(--amber);line-height:1.1;padding:12px 0 2px}
-.reward-number small{font-size:14px}
-.rewards-claim>p{font-size:13px;color:var(--dim);margin:5px 0 20px}
-.rewards-claim>.btn+.btn{margin-top:9px}
-.rewards-claim .ledger{margin-top:14px;text-align:left}
-.reward-history-note{margin-top:14px;line-height:1.5;text-align:left}
-.pltr-explain{margin-top:22px;padding-top:20px;border-top:1px solid var(--line);text-align:left}
+.reward-history-note{margin-top:14px;line-height:1.5}
+.pltr-explain{margin-top:22px;padding-top:20px;border-top:1px solid var(--line)}
 .pltr-explain p{font-size:13.5px;color:var(--dim);line-height:1.65;margin-top:9px}
 .pltr-explain .ledger{margin-top:14px}
-.round-ledger{margin-bottom:14px}
-.close-round{margin-top:14px}
-.round-ready{display:flex;justify-content:center;align-items:center;gap:7px;min-height:44px;border:1px solid var(--line2);color:var(--dim);font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.12em}
+.commander-rewards,.recent-rounds,.total-burned,.rewards-rules{margin-top:14px}
+.commander-rewards,.recent-rounds{overflow-x:auto}
+.empty-rounds{text-align:center;padding:22px 0}
+.right{text-align:right}
 .generals-board{margin-top:14px}
 .generals-board .gen-row{grid-template-columns:44px 1fr 130px 150px}
 .av.vacant{width:22px;height:22px;display:inline-block;background:#0B1116;border:1px dashed var(--line2);flex:none}
