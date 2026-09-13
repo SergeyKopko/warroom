@@ -89,7 +89,7 @@ function CommanderGlyph({ id, size = 24 }: { id: bigint; size?: number }) {
 function Brand({ onClick, compact = false }: { onClick: () => void; compact?: boolean }) {
   return (
     <button className={`brand ${compact ? 'landbrand' : ''}`} onClick={onClick} title="Back to the front page">
-      <span className="dot" />
+      <img src="/warroom-mark.png" alt="" width="1000" height="1000" decoding="async" />
       <b>WARROOM</b>
     </button>
   )
@@ -109,9 +109,15 @@ export default function App() {
   const [tick, setTick] = useState(() => Math.floor(Date.now() / 1000))
 
   useEffect(() => {
+    if (!state.ready) return
+    document.getElementById('boot')?.remove()
+  }, [state.ready])
+
+  useEffect(() => {
+    if (!state.ready) return
     const timer = window.setInterval(() => setTick(Math.floor(Date.now() / 1000)), 1000)
     return () => window.clearInterval(timer)
-  }, [])
+  }, [state.ready])
 
   useEffect(() => {
     const onHistory = () => {
@@ -241,6 +247,8 @@ export default function App() {
     }
   })()
 
+  if (!state.ready) return null
+
   return (
     <div id="app">
       <a className="skip-link" href="#main-content">Skip to main content</a>
@@ -313,7 +321,7 @@ function Landing({ state, selected, tick, onEnter, onDocs, onRoster, onMint }: {
     ['Commanders minted', `${state.minted.toLocaleString()} / ${state.maxSupply.toLocaleString()}`],
   ]
   return <>
-    <div className="classbar"><span>Warroom · Robinhood Chain · chain 4663 · pair {PAIR}</span><span>{state.demo ? 'Prototype build — simulated data' : !isConfigured ? 'Awaiting game deployment' : `Round #${state.round.id} · ${countdown(state.round.endsAt, tick)}`}</span></div>
+    <div className="classbar"><span>Warroom · Robinhood Chain · chain 4663 · pair {PAIR}</span><span>{state.demo ? 'Local demo · simulated data' : !isConfigured ? 'Awaiting deployment' : `Round #${state.round.id} · ${countdown(state.round.endsAt, tick)}`}</span></div>
     <div className="landhead">
       <Brand compact onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />
       <div className="r">
@@ -367,7 +375,7 @@ function Landing({ state, selected, tick, onEnter, onDocs, onRoster, onMint }: {
         </div>
         <ProtocolContracts />
         <div className="notice legal">Reward distributions are protocol AMM fees redistributed between NFTs and settled in tokenized PLTR. They are not dividends and confer no equity, ownership or shareholder rights; mechanically the payout is identical to a liquidity provider collecting fees on Uniswap. The enemy, its territory and all hardware are fictional. Nothing here is financial, investment, legal or tax advice.</div>
-        <footer className="foot"><span>Warroom — visual prototype · <button onClick={onDocs}>Docs and FAQ</button></span><span>Robinhood Chain · pair {PAIR} · rewards in tokenized PLTR</span></footer>
+        <footer className="foot"><span className="foot-brand"><img src="/warroom-mark.png" alt="" width="1000" height="1000" decoding="async" /><span>Warroom · <button onClick={onDocs}>Docs and FAQ</button></span></span><span>Robinhood Chain · pair {PAIR} · rewards in tokenized PLTR</span></footer>
       </div>
     </main>
   </>
@@ -782,9 +790,9 @@ function ActivityRow({ item, tick }: { item: Activity; tick: number }) {
 
 function ProtocolContracts() {
   const rows = [
-    { key: 'Game', name: 'WarroomGame', addr: CONTRACTS.game, note: 'Core game logic · launches, ranks, rewards' },
-    { key: 'Fuel', name: 'WAR token', addr: CONTRACTS.war, note: 'Spent to play · 50% burned on every action' },
-    { key: 'Reward', name: 'Tokenized PLTR', addr: CONTRACTS.pltr, note: 'Creator Fees settle here for claimable rewards' },
+    { key: 'NFT', name: 'Commander NFT — collection', addr: CONTRACTS.game, note: '1,200 max · no wallet limit · rank resets on transfer' },
+    { key: 'Token', name: 'WAR token', addr: CONTRACTS.war, note: 'Fixed supply 1,000,000,000 · spent to play · 50% burned' },
+    { key: 'Rewards', name: 'Reward pool', addr: CONTRACTS.pltr, note: 'Trading fees in · claimable rewards out' },
   ] as const
   const copy = async (value: string) => {
     try { await navigator.clipboard.writeText(value) } catch { /* ignore */ }

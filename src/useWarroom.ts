@@ -67,7 +67,8 @@ const initialActivity: Activity[] = [
 const initialSnapshot: GameSnapshot = {
   connected: false,
   demo: isLocalDemo,
-  loading: false,
+  ready: false,
+  loading: true,
   warBalance: isLocalDemo ? WAR(2_400_000) : 0n,
   pltrBalance: 0n,
   allowance: 0n,
@@ -96,6 +97,8 @@ function deserializeDemo(): GameSnapshot | undefined {
     return {
       ...initialSnapshot,
       ...saved,
+      ready: false,
+      loading: true,
       round: { ...initialSnapshot.round, ...saved.round },
       claimableByCommander: { ...initialSnapshot.claimableByCommander, ...saved.claimableByCommander },
       rankPopulation: Array.isArray(saved.rankPopulation) && saved.rankPopulation.length >= 5
@@ -110,7 +113,70 @@ function deserializeDemo(): GameSnapshot | undefined {
 }
 
 function serializeDemo(snapshot: GameSnapshot) {
-  localStorage.setItem('warroom-demo-v1', JSON.stringify(snapshot, (_, value) => typeof value === 'bigint' ? `bigint:${value}` : value))
+  const { ready: _ready, loading: _loading, ...persistable } = snapshot
+  localStorage.setItem('warroom-demo-v1', JSON.stringify(persistable, (_, value) => typeof value === 'bigint' ? `bigint:${value}` : value))
+}
+
+async function preloadImage(src: string) {
+  const image = new Image()
+  image.src = src
+  await image.decode()
+}
+
+async function waitAssets() {
+  await Promise.all([
+    document.fonts.ready,
+    document.fonts.load('400 16px "Chakra Petch"'),
+    document.fonts.load('600 16px "Chakra Petch"'),
+    document.fonts.load('700 16px "Chakra Petch"'),
+    document.fonts.load('400 12px "IBM Plex Mono"'),
+    document.fonts.load('500 12px "IBM Plex Mono"'),
+    document.fonts.load('600 12px "IBM Plex Mono"'),
+    preloadImage('/commander-nft-320.png'),
+  ]).catch(() => undefined)
+}
+
+async function fetchActivityPage(wallet?: string) {
+  const params = new URLSearchParams({ limit: '100' })
+  if (wallet) params.set('wallet', wallet)
+  const response = await fetch(`/api/activity?${params}`, { headers: { Accept: 'application/json' } })
+  if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) {
+    throw new Error('Activity API unavailable')
+  }
+  const page = await response.json() as { items?: Activity[] }
+  return Array.isArray(page.items) ? page.items : []
+}
+
+async function loadPublicChainSnapshot(): Promise<Partial<GameSnapshot> | undefined> {
+  if (!isConfigured) return undefined
+  const game = getContract({ address: CONTRACTS.game, abi: gameAbi, client: publicClient })
+  const [minted, maxSupply, targetHp, targetMaxHp, targetCycle, totalBurned, totalLaunches, roundId, roundEnds, roundWeight, fees, rankPopulationRaw] = await Promise.all([
+    game.read.totalSupply(),
+    game.read.maxSupply(),
+    game.read.targetHp(),
+    game.read.TARGET_MAX_HP(),
+    game.read.targetCycle(),
+    game.read.totalWarBurned(),
+    game.read.totalLaunches(),
+    game.read.currentRoundId(),
+    game.read.currentRoundEndsAt(),
+    game.read.currentRoundWeight(),
+    game.read.creatorFeesAvailable(),
+    Promise.all([0, 1, 2, 3, 4].map((rank) => game.read.rankPopulation([rank]))),
+  ])
+  return {
+    demo: false,
+    minted: Number(minted),
+    maxSupply: Number(maxSupply),
+    targetHp,
+    targetMaxHp,
+    targetCycle: Number(targetCycle),
+    totalBurned,
+    totalLaunches,
+    rankPopulation: rankPopulationRaw.map(Number),
+    creatorFees: fees,
+    round: { id: Number(roundId), endsAt: Number(roundEnds), reward: 0n, totalWeight: roundWeight, closed: now() >= Number(roundEnds) },
+  }
 }
 
 function mapCommander(id: bigint, raw: any): Commander {
@@ -168,7 +234,7 @@ export function useWarroom() {
   )
 
   useEffect(() => {
-    if (state.demo) serializeDemo(state)
+    if (state.demo && state.ready) serializeDemo(state)
   }, [state])
 
   const addActivity = useCallback((activity: Pick<Activity, 'kind' | 'title' | 'detail'> & { commanderId?: bigint | string }) => {
@@ -179,6 +245,45 @@ export function useWarroom() {
   }, [])
 
   useEffect(() => {
+    let cancelled = false
+    const BOOT_TIMEOUT_MS = 8_000
+
+    async function bootstrap() {
+      let publicSnap: Partial<GameSnapshot> | undefined
+      let activityItems: Activity[] | undefined
+
+      const assets = waitAssets()
+      const chain = loadPublicChainSnapshot()
+        .then((value) => { publicSnap = value })
+        .catch(() => undefined)
+      const activity = isLocalDemo
+        ? Promise.resolve()
+        : fetchActivityPage()
+          .then((items) => { activityItems = items })
+          .catch(() => undefined)
+
+      await Promise.race([
+        Promise.all([assets, chain, activity]),
+        new Promise<void>((resolve) => window.setTimeout(resolve, BOOT_TIMEOUT_MS)),
+      ])
+
+      if (cancelled) return
+
+      setState((current) => ({
+        ...current,
+        ...(publicSnap || {}),
+        ...(activityItems ? { activity: mergeActivityEvents(current.activity, activityItems, current.address) } : {}),
+        ready: true,
+        loading: false,
+      }))
+    }
+
+    void bootstrap()
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    if (!state.ready) return
     const transport = createBrowserActivityTransport({
       wallet: state.address,
       initial: state.activity,
@@ -188,7 +293,7 @@ export function useWarroom() {
     return () => transport.stop()
     // Reconnect with a new mine marker only when the wallet identity changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.address])
+  }, [state.address, state.ready])
 
   const refresh = useCallback(async (account = accountRef.current) => {
     if (!isConfigured || !account) return

@@ -43,6 +43,7 @@ export type GameSnapshot = {
   connected: boolean
   address?: `0x${string}`
   demo: boolean
+  ready: boolean
   loading: boolean
   pendingAction?: string
   error?: string

@@ -85,6 +85,7 @@ button.brand{cursor:pointer;background:none;border:0;font-family:inherit;color:i
   font-size:19px;font-weight:700;letter-spacing:.26em;
 }
 .brand .dot{width:7px;height:7px;background:var(--rep);animation:pulse 2s infinite}
+.brand img{width:27px;height:27px;object-fit:contain;flex:none}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
 .nav{display:flex;flex:1;overflow-x:auto;scrollbar-width:none}
 .nav::-webkit-scrollbar{display:none}
@@ -574,8 +575,11 @@ button{min-height:44px}
 .skip-link{position:fixed;left:12px;top:8px;z-index:120;transform:translateY(-160%);padding:9px 12px;background:var(--amber);color:#180F00;font-family:var(--mono);font-size:12px}
 .skip-link:focus{transform:none}
 .brand{min-height:58px}
-.brand img{width:27px;height:27px;object-fit:cover;flex:none}
+.brand img{width:27px;height:27px;object-fit:contain;flex:none}
 .landbrand{min-height:44px}
+.landbrand img{width:22px;height:22px}
+.foot-brand{display:inline-flex;align-items:center;gap:8px}
+.foot-brand img{width:16px;height:16px;object-fit:contain;flex:none;opacity:.9}
 .land-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
 .classbar button{min-height:0;color:var(--amber);font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase}
 .mobile-menu{display:none;width:48px;align-items:center;justify-content:center;border-right:1px solid var(--line)}
