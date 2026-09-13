@@ -132,12 +132,29 @@ function mapCommander(id: bigint, raw: any): Commander {
 }
 
 function messageFromError(error: unknown) {
-  const text = error instanceof Error ? error.message : String(error)
-  if (/rejected|denied/i.test(text)) return 'Transaction was rejected in the wallet.'
-  if (/insufficient/i.test(text)) return 'Not enough balance to complete this transaction.'
-  if (/StillReloading/.test(text)) return 'The free launcher is still reloading.'
-  if (/DailyExtraLimit/.test(text)) return 'Three extra shots have already been used today.'
-  return text.split('\n')[0].slice(0, 180)
+  const parts: string[] = []
+  if (error instanceof Error) parts.push(error.message)
+  const anyError = error as { shortMessage?: string; details?: string; cause?: { message?: string; data?: { errorName?: string } }; metaMessages?: string[] }
+  if (anyError?.shortMessage) parts.push(anyError.shortMessage)
+  if (anyError?.details) parts.push(anyError.details)
+  if (anyError?.cause?.message) parts.push(anyError.cause.message)
+  if (anyError?.cause?.data?.errorName) parts.push(anyError.cause.data.errorName)
+  if (anyError?.metaMessages?.length) parts.push(anyError.metaMessages.join(' '))
+  const text = parts.join('\n')
+
+  if (/rejected|denied|User rejected/i.test(text)) return 'Transaction was rejected in the wallet.'
+  if (/StillReloading|0xe3ad4714/i.test(text)) return 'The free launcher is still reloading. Wait for the cooldown, or pay 10,000 WAR for an extra shot.'
+  if (/DailyExtraLimit|0xeda06d0e/i.test(text)) return 'Three extra shots have already been used today.'
+  if (/NotTokenOwner|0x59dc379f/i.test(text)) return 'This wallet does not own the selected Commander.'
+  if (/SafeERC20FailedOperation|ERC20Insufficient|insufficient/i.test(text)) return 'Not enough WAR balance or allowance for this action.'
+  if (/RequirementsNotMet|0xa871d42b/i.test(text)) return 'This Commander does not meet the requirements yet.'
+  if (/RankFull|0xbd1c8652/i.test(text)) return 'That rank is full.'
+  if (/SoldOut|0x52df9fe5/i.test(text)) return 'Commanders are sold out.'
+  if (/RoundStillOpen|0xffaaffc7/i.test(text)) return 'The round is still open.'
+  if (/NothingToClaim|0x969bf728/i.test(text)) return 'Nothing to claim for this Commander.'
+
+  const first = text.split('\n').find((line) => line.trim()) || 'Transaction failed.'
+  return first.replace(/^The contract function "[^"]+" reverted with the following signature:\s*/i, 'Contract reverted: ').slice(0, 180)
 }
 
 export function useWarroom() {
@@ -408,6 +425,15 @@ export function useWarroom() {
     async launch(paid: boolean) {
       if (!selected) return
       if (isConfigured) {
+        if (!paid) {
+          const readyAt = selected.lastLaunchAt + FREE_SHOT_COOLDOWN
+          const secondsLeft = readyAt - now()
+          if (secondsLeft > 0) {
+            const error = new Error(`StillReloading: free launch ready in ${Math.ceil(secondsLeft / 60)} min. Use Launch now for 10,000 WAR.`)
+            setState((current) => ({ ...current, error: messageFromError(error) }))
+            throw error
+          }
+        }
         const receipt = await write(paid ? 'Authorizing extra shot' : 'Launching rocket', 'launch', [selected.id, paid], paid ? EXTRA_SHOT_PRICE : 0n)
         for (const log of receipt.logs) {
           try {

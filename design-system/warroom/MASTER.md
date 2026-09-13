@@ -1,15 +1,14 @@
 # Design System Master File
 
-> **LOGIC:** When building a specific page, first check `design-system/pages/[page-name].md`.
-> If that file exists, its rules **override** this Master file.
-> If not, strictly follow the rules below.
+> **Source of truth:** `warroom-mvp-v19 (1).html` and `src/styles.css`.
+> Page-specific notes under `design-system/pages/` override this file when present.
 
 ---
 
-**Project:** WARROOM
-**Generated:** 2026-09-12 14:08:44
-**Category:** Financial Dashboard
-**Design Dials:** Motion 7/10 (Standard) | Density 8/10 (Dense / Dashboard)
+**Project:** WARROOM  
+**Category:** Tactical ops interface / on-chain game  
+**Motion:** Radar sweep, ambient flights, stamp overlays, marquee, spring modals  
+**Density:** Dense / hairline borders / zero radius
 
 ---
 
@@ -19,53 +18,52 @@
 
 | Role | Hex | CSS Variable |
 |------|-----|--------------|
-| Primary | `#0F172A` | `--color-primary` |
-| On Primary | `#FFFFFF` | `--color-on-primary` |
-| Secondary | `#1E293B` | `--color-secondary` |
-| Accent/CTA | `#22C55E` | `--color-accent` |
-| Background | `#020617` | `--color-background` |
-| Foreground | `#F8FAFC` | `--color-foreground` |
-| Muted | `#1A1E2F` | `--color-muted` |
-| Border | `#334155` | `--color-border` |
-| Destructive | `#EF4444` | `--color-destructive` |
-| Ring | `#0F172A` | `--color-ring` |
+| Void background | `#0B0D0F` | `--void` |
+| Board | `#0E1216` | `--board` |
+| Panel | `#12161A` | `--panel` |
+| Panel elevated | `#171C21` | `--panel2` |
+| Line | `#242A30` | `--line` |
+| Line strong | `#333B42` | `--line2` |
+| Ink | `#E8ECEF` | `--ink` |
+| Dim | `#94A0A9` | `--dim` |
+| Faint | `#5A646D` | `--faint` |
+| Fed / ally blue | `#2E9BFF` | `--fed` |
+| Fed deep | `#0A2E4E` | `--fed-deep` |
+| Rep / enemy red | `#F04A2E` | `--rep` |
+| Rep deep | `#4E1509` | `--rep-deep` |
+| Amber / CTA | `#FFB020` | `--amber` |
+| Amber deep | `#3A2708` | `--amber-deep` |
 
-**Color Notes:** Dark bg + green positive indicators
+**Mood:** OLED charcoal, amber accents, blue commanders, red enemy. No green matrix neon. No purple glow. No rounded cards.
 
 ### Typography
 
-- **Heading Font:** Orbitron
-- **Body Font:** JetBrains Mono
-- **Mood:** cyberpunk, neon, glitch, hud, sci-fi, dark, matrix green, magenta, chamfered, tactical
-- **Google Fonts:** [Orbitron + JetBrains Mono](https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Orbitron:wght@700;900&display=swap)
+- **Display:** Chakra Petch (400–700)
+- **Mono:** IBM Plex Mono (400–600)
+- Body: 15px / 1.45 on `--disp`
+- Eyebrows: mono, 10px, letter-spacing `.22em`, uppercase, `--faint`
 
-**CSS Import:**
-```css
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Orbitron:wght@700;900&display=swap');
-```
+### Spacing & shape
 
-### Spacing Variables
+- Gaps: 9–14px typical; page padding 22px (14px on mobile)
+- **Border radius: 0** everywhere
+- Borders: 1px `--line` / `--line2`
+- Max content width: 1560px
 
-*Density: 8/10 — Dense / Dashboard*
+### Motion
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--space-xs` | `2px` / `0.125rem` | Tight gaps |
-| `--space-sm` | `4px` / `0.25rem` | Icon gaps, inline spacing |
-| `--space-md` | `8px` / `0.5rem` | Standard padding |
-| `--space-lg` | `12px` / `0.75rem` | Section padding |
-| `--space-xl` | `16px` / `1rem` | Large gaps |
-| `--space-2xl` | `24px` / `1.5rem` | Section margins |
-| `--space-3xl` | `32px` / `2rem` | Hero padding |
+| Effect | Spec |
+|--------|------|
+| Brand pulse | `.brand .dot` 2s infinite |
+| Radar sweep | Canvas plot continuous amber ray |
+| Ambient flights | Canvas arcs every ~2.4s |
+| Mine launch | Amber trail + bloom + shake |
+| Stamp | Fast in, delayed fade (`resIn` / `resOut`) |
+| Marquee | 34s linear loop |
+| Modal | `veil` + spring `present` |
+| Feed row | `rowIn` / `slidein` |
 
-### Shadow Depths
-
-| Level | Value | Usage |
-|-------|-------|-------|
-| `--shadow-sm` | `0 1px 2px rgba(0,0,0,0.05)` | Subtle lift |
-| `--shadow-md` | `0 4px 6px rgba(0,0,0,0.1)` | Cards, buttons |
-| `--shadow-lg` | `0 10px 15px rgba(0,0,0,0.1)` | Modals, dropdowns |
-| `--shadow-xl` | `0 20px 25px rgba(0,0,0,0.15)` | Hero images, featured cards |
+Honor `prefers-reduced-motion`: kill marquee loops; canvas may freeze sweep/ambient.
 
 ---
 
@@ -73,155 +71,39 @@
 
 ### Buttons
 
-```css
-/* Primary Button */
-.btn-primary {
-  background: #22C55E;
-  color: white;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-weight: 600;
-  transition: all 200ms ease;
-  cursor: pointer;
-}
+- `.btn` — tracked caps, hairline border, panel fill
+- `.btn-amber` / `.btn-fed` — accent bordered fills
+- `.launch` — red gradient fire control; hover glow `0 0 26px rgba(240,74,46,.4)`
+- `.hbtn` / `.hbtn.amb` / `.hbtn.ico` — header chrome
 
-.btn-primary:hover {
-  opacity: 0.9;
-  transform: translateY(-1px);
-}
+### Panels
 
-/* Secondary Button */
-.btn-secondary {
-  background: transparent;
-  color: #0F172A;
-  border: 2px solid #0F172A;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-weight: 600;
-  transition: all 200ms ease;
-  cursor: pointer;
-}
-```
+- `.panel` / `.panel-h` / `.panel-b` — no shadow, no radius
+- `.notice` — amber border callout
 
-### Cards
+### Plot board
 
-```css
-.card {
-  background: #020617;
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: var(--shadow-md);
-  transition: all 200ms ease;
-  cursor: pointer;
-}
+- Canvas `1200×560`, silos + enemy polygon, radar, flights, blooms
+- Overlay scanlines `.plot-ov`
+- Corner mono captions + legend YOU / OTHERS / ENEMY
 
-.card:hover {
-  box-shadow: var(--shadow-lg);
-  transform: translateY(-2px);
-}
-```
+### Landing hero
 
-### Inputs
-
-```css
-.input {
-  padding: 12px 16px;
-  border: 1px solid #E2E8F0;
-  border-radius: 8px;
-  font-size: 16px;
-  transition: border-color 200ms ease;
-}
-
-.input:focus {
-  border-color: #0F172A;
-  outline: none;
-  box-shadow: 0 0 0 3px #0F172A20;
-}
-```
-
-### Modals
-
-```css
-.modal-overlay {
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-}
-
-.modal {
-  background: white;
-  border-radius: 16px;
-  padding: 32px;
-  box-shadow: var(--shadow-xl);
-  max-width: 500px;
-  width: 90%;
-}
-```
+- Brand-scale `WAR` + stroked `ROOM`
+- One subline, one hero copy, CTA row, eyebrow
+- Marquee metrics then enemy HP → plot+feed → stepline → stats → contracts → legal
 
 ---
 
-## Style Guidelines
+## Do / Don't
 
-**Style:** Dark Mode (OLED)
+**Do**
+- Match MVP class names and copy voice (“ops briefing”)
+- Keep amber / fed / rep on charcoal
+- Port canvas plot behavior for living board
 
-**Keywords:** Dark theme, low light, high contrast, deep black, midnight blue, eye-friendly, OLED, night mode, power efficient
-
-**Best For:** Night-mode apps, coding platforms, entertainment, eye-strain prevention, OLED devices, low-light
-
-**Key Effects:** Minimal glow (text-shadow: 0 0 10px), dark-to-light transitions, low white emission, high readability, visible focus
-
-### Page Pattern
-
-**Pattern Name:** Real-Time / Operations Landing
-
-- **Conversion Strategy:** For ops/security/iot products. Demo or sandbox link. Trust signals.
-- **CTA Placement:** Primary CTA in nav + After metrics
-- **Section Order:** 1. Hero (product + live preview or status), 2. Key metrics/indicators, 3. How it works, 4. CTA (Start trial / Contact)
-
----
-
-## Motion
-
-**Stagger List** (Standard) — Trigger: load or scroll | Duration: 300-450ms | Easing: `back.out(1.4)`
-
-```js
-gsap.from('.grid-item', { opacity: 0, scale: 0.92, y: 16, duration: 0.4, stagger: { each: 0.06, from: 'start', grid: 'auto' }, ease: 'back.out(1.4)' });
-```
-
-**Framework notes:** grid: 'auto' lets GSAP infer rows/columns from a CSS grid layout for a natural wave stagger
-
-- ✅ Combine with from: 'center' for a bento-grid layout to draw the eye inward first
-- ❌ Don't use back.out on dense data tables; the overshoot reads as sloppy on informational UI
-- ⚡ Group DOM writes; avoid interleaving layout reads (getBoundingClientRect) between staggered tweens
-
----
-
-## Anti-Patterns (Do NOT Use)
-
-- ❌ Light mode default
-- ❌ Slow rendering
-
-### Additional Forbidden Patterns
-
-- ❌ **Emojis as icons** — Use SVG icons (Heroicons, Lucide, Simple Icons)
-- ❌ **Missing cursor:pointer** — All clickable elements must have cursor:pointer
-- ❌ **Layout-shifting hovers** — Avoid scale transforms that shift layout
-- ❌ **Low contrast text** — Maintain 4.5:1 minimum contrast ratio
-- ❌ **Instant state changes** — Always use transitions (150-300ms)
-- ❌ **Invisible focus states** — Focus states must be visible for a11y
-
----
-
-## Pre-Delivery Checklist
-
-Before delivering any UI code, verify:
-
-- [ ] No emojis used as icons (use SVG instead)
-- [ ] All icons from consistent icon set (Heroicons/Lucide)
-- [ ] `cursor-pointer` on all clickable elements
-- [ ] Hover states with smooth transitions (150-300ms)
-- [ ] Light mode: text contrast 4.5:1 minimum
-- [ ] Focus states visible for keyboard navigation
-- [ ] `prefers-reduced-motion` respected
-- [ ] Responsive: 375px, 768px, 1024px, 1440px
-- [ ] No content hidden behind fixed navbars
-- [ ] No horizontal scroll on mobile
+**Don't**
+- Orbitron, JetBrains Mono, or green `#22C55E` themes
+- Rounded pills, multi-layer shadows, purple glows
+- Cards in the hero
+- Invent challenge UX that the on-chain MVP does not support — show trial seats instead
