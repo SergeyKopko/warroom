@@ -18,7 +18,7 @@ function required(name: string) {
 }
 
 export function getServerEnv(): ServerEnv {
-  const deploymentBlockValue = process.env.DEPLOYMENT_BLOCK?.trim() || process.env.VITE_DEPLOYMENT_BLOCK?.trim()
+  const deploymentBlockValue = process.env.DEPLOYMENT_BLOCK?.trim()
   if (!deploymentBlockValue) throw new Error('DEPLOYMENT_BLOCK is required')
   const deploymentBlock = BigInt(deploymentBlockValue)
   const confirmations = BigInt(process.env.INDEXER_CONFIRMATIONS || '12')

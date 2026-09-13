@@ -58,6 +58,8 @@ describe('WarroomGame WAR spending', () => {
   let accounts: PrivateKeyAccount[]
   let publicClient: ReturnType<typeof createPublicClient>
   let war: Address
+  let pltr: Address
+  let escrow: Address
   let game: Address
   let treasury: Address
   let player: Address
@@ -111,8 +113,8 @@ describe('WarroomGame WAR spending', () => {
     }
 
     war = await deploy(artifacts.erc20, ['Local WAR', 'WAR'])
-    const pltr = await deploy(artifacts.erc20, ['Local PLTR', 'PLTR'])
-    const escrow = await deploy(artifacts.escrow)
+    pltr = await deploy(artifacts.erc20, ['Local PLTR', 'PLTR'])
+    escrow = await deploy(artifacts.escrow)
     game = await deploy(artifacts.game, [war, pltr, treasury, escrow, admin.address, 'https://warroom.example/api/metadata/'])
 
     const mintHash = await wallet.writeContract({ address: war, abi: artifacts.erc20.abi, functionName: 'mint', args: [player, parseEther('2000000')] })
@@ -125,7 +127,7 @@ describe('WarroomGame WAR spending', () => {
   it('mints NFTs and splits every WAR payment 50% burn / 50% treasury', async () => {
     const wallet = createWalletClient({ account: accounts[1], chain: localChain, transport: http(rpcUrl) })
     const writeGame = async (functionName: string, args: readonly unknown[]) => {
-      const hash = await wallet.writeContract({ address: game, abi: artifacts.game.abi, functionName, args })
+      const hash = await wallet.writeContract({ address: game, abi: artifacts.game.abi, functionName, args, gas: functionName === 'launch' ? 700_000n : undefined })
       const receipt = await publicClient.waitForTransactionReceipt({ hash, pollingInterval: 10 })
       expect(receipt.status).toBe('success')
     }
@@ -155,7 +157,7 @@ describe('WarroomGame WAR spending', () => {
   it('allows a free launch without WAR and enforces its cooldown', async () => {
     const wallet = createWalletClient({ account: accounts[1], chain: localChain, transport: http(rpcUrl) })
     const send = async (functionName: string, args: readonly unknown[]) => {
-      const hash = await wallet.writeContract({ address: game, abi: artifacts.game.abi, functionName, args })
+      const hash = await wallet.writeContract({ address: game, abi: artifacts.game.abi, functionName, args, gas: functionName === 'launch' ? 700_000n : undefined })
       const receipt = await publicClient.waitForTransactionReceipt({ hash, pollingInterval: 10 })
       if (receipt.status !== 'success') throw new Error(`Transaction ${hash} reverted`)
       return receipt
@@ -165,5 +167,35 @@ describe('WarroomGame WAR spending', () => {
     await send('launch', [1n, false])
     expect(await publicClient.readContract({ address: war, abi: artifacts.erc20.abi, functionName: 'balanceOf', args: [player] })).toBe(before)
     await expect(send('launch', [1n, false])).rejects.toThrow()
+  }, 30_000)
+
+  it('pulls PLTR creator fees, applies rank weight, and lets the NFT owner claim', async () => {
+    const playerWallet = createWalletClient({ account: accounts[1], chain: localChain, transport: http(rpcUrl) })
+    const closerWallet = createWalletClient({ account: accounts[3], chain: localChain, transport: http(rpcUrl) })
+    const send = async (wallet: typeof playerWallet, functionName: string, args: readonly unknown[], gas?: bigint) => {
+      const hash = await wallet.writeContract({ address: game, abi: artifacts.game.abi, functionName, args, gas })
+      const receipt = await publicClient.waitForTransactionReceipt({ hash, pollingInterval: 10 })
+      expect(receipt.status).toBe('success')
+    }
+
+    await send(playerWallet, 'mint', [1n])
+    await send(playerWallet, 'buyNextRank', [1n])
+    await send(playerWallet, 'launch', [1n, false], 700_000n)
+    expect(await publicClient.readContract({ address: game, abi: artifacts.game.abi, functionName: 'currentRoundWeight' })).toBe(140n)
+
+    const adminWallet = createWalletClient({ account: accounts[0], chain: localChain, transport: http(rpcUrl) })
+    const fundingHash = await adminWallet.writeContract({ address: pltr, abi: artifacts.erc20.abi, functionName: 'mint', args: [escrow, parseEther('100')] })
+    await publicClient.waitForTransactionReceipt({ hash: fundingHash, pollingInterval: 10 })
+    expect(await publicClient.readContract({ address: game, abi: artifacts.game.abi, functionName: 'creatorFeesAvailable' })).toBe(parseEther('100'))
+
+    await fetch(rpcUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'evm_increaseTime', params: [5 * 60 * 60 + 1] }) })
+    await fetch(rpcUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'evm_mine', params: [] }) })
+    await send(closerWallet as typeof playerWallet, 'closeRound', [])
+
+    expect(await publicClient.readContract({ address: pltr, abi: artifacts.erc20.abi, functionName: 'balanceOf', args: [accounts[3].address] })).toBe(parseEther('0.5'))
+    expect(await publicClient.readContract({ address: game, abi: artifacts.game.abi, functionName: 'claimableRewards', args: [1n, [1n]] })).toBe(parseEther('99.5'))
+
+    await send(playerWallet, 'claimRewards', [1n, [1n]])
+    expect(await publicClient.readContract({ address: pltr, abi: artifacts.erc20.abi, functionName: 'balanceOf', args: [player] })).toBe(parseEther('99.5'))
   }, 30_000)
 })

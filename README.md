@@ -24,6 +24,16 @@ Activity indexer ── confirmations/reorg check ──► Neon PostgreSQL
 
 The database is the common source for every visitor. A wallet is not required to load history or receive new events. When a wallet is connected, the same rows are compared with `actor` and marked `mine` in the interface.
 
+## Game UI and on-chain state
+
+- `Play`, `Arsenal`, `Rank` and `Rewards` read the selected Commander's current struct directly from WarroomGame. A successful receipt triggers an immediate reread; a 15-second refresh also catches transactions made in another tab.
+- Arsenal progress uses successful hits, not total launches. Missile levels unlock in order at 10, 30 and 75 hits and change on-chain damage to 250, 600 and 1,500.
+- Rank upgrades are real WarroomGame calls. Reward multipliers are 1x / 1.4x / 1.9x / 2.5x / 4x; Major, Colonel and General capacities are read from `rankPopulation`.
+- A Commander's round weight is snapshotted on its first launch in that round. A promotion made later applies to subsequent rounds.
+- `Available to claim` sums every closed round, not a fixed recent window. Claim calls use bounded 100-round batches so historical rewards remain accessible without unbounded transaction gas.
+- Paid calls approve only the exact WAR required for that action. The roster exposes a revocation action for allowances left by an earlier build.
+- Launch transactions carry a safe explicit gas limit because the on-chain hit branch writes more state than the miss branch and a preflight estimate can observe the opposite outcome.
+
 Before `WARROOM_GAME_ADDRESS` and `DEPLOYMENT_BLOCK` are configured, the deployed API intentionally returns an empty shared feed and SSE heartbeats. The production frontend shows only real wallet balances, creates no simulated Commanders or Activity rows, and keeps transaction actions disabled. It never guesses or accepts a contract address from a visitor. The interactive simulation is available only from Vite's local development build.
 
 The indexer accepts no contract address or prebuilt Activity row from a client. It only reads `WARROOM_GAME_ADDRESS`, decodes the known ABI and inserts events with a unique `(chain_id, contract_address, transaction_hash, log_index)` constraint. Events without an owner field use the sender of their on-chain transaction as `actor`.
@@ -149,6 +159,8 @@ Check the current limits in each provider dashboard before launch because free-t
 6. Open `/api/activity?limit=1` and confirm a JSON response, then submit a testnet transaction and verify `pending → confirmed` in Activity before using mainnet.
 7. Configure the deployed game contract as the Pons V2 creator-fee recipient for the WAR/PLTR launch.
 
+Pons V2 fixes the Creator Fees recipient in the launch metadata. For the final WAR token, set `WarroomGame` as that recipient when the WAR/PLTR launch is created. The temporary WAR token currently used by this deployment was not launched for this game and the live Fee Escrow balance for WarroomGame is currently `0 PLTR`; therefore `Available to claim` correctly remains zero until a compatible fee stream funds a closed round. This is external launch configuration, not a browser-side value and cannot be repaired by faking a reward row.
+
 The constructor stores the production NFT metadata base URI. `/api/metadata/:tokenId` reads the current Commander state from chain and exposes rank, missile level, hits, launches, damage and WAR spending/burn attributes alongside `public/commander-nft.png`.
 
 For the current Robinhood mainnet deployment, pass the configured `WAR_TOKEN_ADDRESS` into the immutable `war_` constructor argument; the site intentionally keeps displaying the symbol `WAR`. Local Solidity integration tests use an isolated mintable ERC-20 double so mint/burn/treasury behavior can be verified without spending or impersonating holders of the live token. That test contract is never deployed or bundled into production.
@@ -180,4 +192,6 @@ pnpm test
 pnpm build
 ```
 
-The tests cover all eight indexed event decoders, deduplication, pending replacement, cursor pagination/filter validation, checkpoint continuation, reorg rewind, realtime reconnect/catch-up, walletless Activity, realtime-to-polling fallback, and local EVM integration for NFT minting, mint-more, free/extra launches, rank spending, cooldown, and exact 50/50 WAR burn/treasury splits.
+The 26 tests cover all eight indexed event decoders, deduplication, pending replacement, cursor pagination/filter validation, checkpoint continuation, reorg rewind, realtime reconnect/catch-up, walletless Activity, realtime-to-polling fallback, complete reward-round pagination, and local EVM integration for NFT minting, mint-more, free/extra launches, rank spending/weight, cooldown, Pons fee pulling, PLTR claims, and exact 50/50 WAR burn/treasury splits.
+
+Current live smoke-check (read-only, Robinhood Chain): WarroomGame is deployed at block `61815288`; eight Commander NFTs, eleven launches, two successful Captain upgrades and `680,000 WAR` burned were observed while this revision was prepared. No private key or backend signer was used.

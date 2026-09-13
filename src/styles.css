@@ -593,6 +593,10 @@ button{min-height:44px}
 .contracts small{font-family:var(--mono);font-size:10px;color:var(--faint);margin-top:8px}
 .contracts a{font-family:var(--mono);font-size:10px;color:var(--fed);margin-top:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .legal{margin-top:20px}
+.foot button{min-height:0;color:var(--amber);font-family:var(--mono);font-size:11px}
+.protocol-contracts{margin-top:14px}
+.protocol-contracts .contracts{margin-top:0;border:0}
+.contract-warning{border-top:1px solid var(--line)}
 .cmd-avatar{position:relative;display:inline-flex;flex:none;overflow:hidden;background:#0E1216;border:1px solid var(--line2);color:var(--fed)}
 .cmd-avatar img{width:100%;height:100%;object-fit:cover;filter:contrast(1.08)}
 .cmd-avatar b{display:none;position:absolute;right:3px;bottom:2px;padding:1px 3px;background:rgba(9,11,13,.78);font-family:var(--mono);font-size:8px;line-height:1;color:#fff}
@@ -610,6 +614,12 @@ button{min-height:44px}
 .ambient-flight{opacity:.8;animation:ambient 5s ease-in-out infinite}
 .rocket-dot{offset-path:path("M120 430Q330 40 535 240");animation:rocketTravel .75s cubic-bezier(.3,.7,.2,1) forwards}
 .impact-ring{opacity:0;transform-origin:548px 258px;animation:impact .55s .7s ease-out forwards}
+.enemy-integrity-label{margin-top:14px}
+.hp-top .big{margin-top:6px}
+.hp-top .big span{font-size:26px;color:var(--dim)}
+.enemy-damage{text-align:right}
+.enemy-damage .num{font-size:22px;font-weight:600}
+.hp-meta{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-top:8px}
 @keyframes targetPulse{0%{opacity:.9;transform:scale(.75)}75%,100%{opacity:0;transform:scale(2.6)}}
 @keyframes unitBlink{0%,100%{opacity:.55}50%{opacity:1}}
 @keyframes ambient{0%,100%{opacity:.25}50%{opacity:.9}}
@@ -622,6 +632,7 @@ button{min-height:44px}
 .commander-summary b{display:block;font-size:19px;margin-top:6px}
 .commander-summary p{font-size:13px;color:var(--dim);line-height:1.55;margin-top:5px}
 .commander-summary>div:last-child{display:flex;gap:10px;flex-wrap:wrap}
+.damage-board{margin-top:14px;overflow-x:auto}
 .operation-panel{margin-top:14px}
 .statgrid.inline{margin-top:0}
 .empty-gate{max-width:720px;margin:60px auto;padding:42px;text-align:center}
@@ -633,6 +644,10 @@ button{min-height:44px}
 .mcard-foot{padding:13px 16px;border-top:1px solid var(--line)}
 .mcard-foot .ledger{margin-bottom:11px}
 .mcard.owned .silo i{background:var(--fed)}
+.upgrade-progress{margin:0 0 7px}
+.upgrade-progress-label{margin:0 0 10px}
+.rank-progress{margin-top:9px;max-width:340px}
+.rank-progress-label{margin-top:5px}
 .rank-actions{display:grid;gap:6px}
 .seat-copy{margin-top:5px}
 .rank-explain{margin-top:14px}
@@ -647,6 +662,10 @@ button{min-height:44px}
 .rewards-claim>p{font-size:13px;color:var(--dim);margin:5px 0 20px}
 .rewards-claim>.btn+.btn{margin-top:9px}
 .rewards-claim .ledger{margin-top:14px;text-align:left}
+.reward-history-note{margin-top:14px;line-height:1.5;text-align:left}
+.pltr-explain{margin-top:22px;padding-top:20px;border-top:1px solid var(--line);text-align:left}
+.pltr-explain p{font-size:13.5px;color:var(--dim);line-height:1.65;margin-top:9px}
+.pltr-explain .ledger{margin-top:14px}
 .round-ledger{margin-bottom:14px}
 .close-round{margin-top:14px}
 .round-ready{display:flex;justify-content:center;align-items:center;gap:7px;min-height:44px;border:1px solid #31563d;color:#7edd9b;font-family:var(--mono);font-size:10.5px;text-transform:uppercase}
@@ -654,6 +673,11 @@ button{min-height:44px}
 .vertical .st{width:100%;border-right:0;border-bottom:1px solid var(--line)}
 .vertical .st:last-child{border-bottom:0}
 .commander-rewards{margin-top:14px;overflow-x:auto}
+.recent-rounds{margin-top:14px;overflow-x:auto}
+.empty-rounds{text-align:center;padding:22px 0}
+.rewards-rules{margin-top:14px}
+.rewards-rules .panel-b>p{font-size:13px;line-height:1.55;color:var(--dim);margin-top:12px}
+.rewards-rule-notice{margin-top:14px}
 .right{text-align:right}
 .total-burned{margin-top:14px}
 .total-burned .panel-b{text-align:center;padding:26px}
@@ -695,6 +719,19 @@ button{min-height:44px}
 .split-diagram b{font-family:var(--mono);font-size:12px}
 .split-diagram small{font-family:var(--mono);font-size:9px;color:var(--faint);margin-top:4px}
 .split-diagram>i{height:1px;background:var(--line2)}
+.modal-l{backdrop-filter:blur(5px)}
+.nft-title{font-size:17px;font-weight:600;margin-top:6px}
+.nftcard p{font-size:13px;color:var(--dim);margin-top:8px;line-height:1.6}
+.modal-label{margin:20px 0 9px}
+.modal-supply{margin-top:22px}
+.modal-supply>div:first-child{display:flex;justify-content:space-between;margin-bottom:8px}
+.modal-supply .num{font-size:12px}
+.modal-supply>.eyebrow{display:block;margin-top:8px}
+.modal-ledger{margin-top:20px}
+.roster-intro{font-size:13.5px;color:var(--dim);margin-bottom:18px}
+.roster-intro b{color:var(--ink)}
+.modal-actions{display:flex;gap:10px}
+.revoke-button{margin-top:12px}
 .modal-backdrop{position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:20px;background:rgba(4,7,9,.88);backdrop-filter:blur(5px);animation:fade .2s}
 .modal{max-height:calc(100dvh - 40px);overflow:auto;box-shadow:0 30px 100px rgba(0,0,0,.7)}
 .modal-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--line);background:var(--panel2)}
@@ -777,6 +814,8 @@ button{min-height:44px}
   .split-diagram>i{width:1px;height:18px;justify-self:center}
   .modal-backdrop{padding:12px}
   .modal{max-height:calc(100dvh - 24px)}
+  .modal-actions{flex-direction:column}
+  .nftcard .body{align-items:flex-start}
 }
 @media(prefers-reduced-motion:reduce){
   .target-pulse,.unit-dot,.ambient-flight,.rocket-dot,.impact-ring{animation:none!important}

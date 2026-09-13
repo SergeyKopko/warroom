@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@fontsource/chakra-petch':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@fontsource/ibm-plex-mono':
+        specifier: 5.2.7
+        version: 5.2.7
       '@neondatabase/serverless':
         specifier: ^1.0.2
         version: 1.1.0
@@ -661,6 +667,12 @@ packages:
   '@fastify/busboy@2.1.1':
     resolution: {integrity: sha512-vBZP4NlzfOlerQTnba4aqZoMhE/a9HY7HRqoOPaETQcSQuWEIyZMHGfVu6w9wGtGK5fED5qRs2DteVCjOH60sA==}
     engines: {node: '>=14'}
+
+  '@fontsource/chakra-petch@5.3.0':
+    resolution: {integrity: sha512-QZvbM/q2R6n1pg2x+TJPftZmBNS+ADU37L4Z4L/6UJIz+JZ/SRaEf8usPFRiP7Ht28sIideMu/Bm1SnGlSrwNw==}
+
+  '@fontsource/ibm-plex-mono@5.2.7':
+    resolution: {integrity: sha512-MKAb8qV+CaiMQn2B0dIi1OV3565NYzp3WN5b4oT6LTkk+F0jR6j0ZN+5BKJiIhffDC3rtBULsYZE65+0018z9w==}
 
   '@foundry-rs/anvil-darwin-amd64@1.7.1':
     resolution: {integrity: sha512-OgwzwY+FsGrsPyDv4mmbhOwARO8s37YHrm2qaNzgSH4VlKnXgJCrnoT7bpgOhLyBPtxXjBT8L2E3b79deesXRg==}
@@ -3227,6 +3239,10 @@ snapshots:
     optional: true
 
   '@fastify/busboy@2.1.1': {}
+
+  '@fontsource/chakra-petch@5.3.0': {}
+
+  '@fontsource/ibm-plex-mono@5.2.7': {}
 
   '@foundry-rs/anvil-darwin-amd64@1.7.1':
     optional: true

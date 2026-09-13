@@ -30,6 +30,15 @@ export type Round = {
   closed: boolean
 }
 
+export type RewardRoundHistory = {
+  id: number
+  reward: bigint
+  totalWeight: bigint
+  closedAt: number
+  commanderWeight: bigint
+  claimed: boolean
+}
+
 export type GameSnapshot = {
   connected: boolean
   address?: `0x${string}`
@@ -51,6 +60,7 @@ export type GameSnapshot = {
   rankPopulation: number[]
   creatorFees: bigint
   round: Round
+  roundHistory: RewardRoundHistory[]
   commanders: Commander[]
   selectedId?: bigint
   claimable: bigint
