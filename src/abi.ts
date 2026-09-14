@@ -58,6 +58,22 @@ export const gameAbi = parseAbi([
 ])
 
 export const ponsEscrowAbi = parseAbi([
+  'function balanceOf(address recipient) view returns (uint256)',
   'function balanceOfToken(address recipient, address token) view returns (uint256)',
+  'function claim()',
   'function claimToken(address token)',
+])
+
+export const ponsFactoryAbi = parseAbi([
+  'function getLaunchedToken(address token) view returns ((address token, address curve, address deployer, address creatorFeeRecipient, address pairToken, uint256 graduationThreshold, uint24 poolFee, int24 tickSpacing, uint16 creatorTaxBps, bool buybackEnabled, uint8 phase, uint256 sweptQuote, uint256 sweptTokens, uint256 sweptAt, bool exists))',
+])
+
+export const ponsCurveAbi = parseAbi([
+  'function quoteFeeBalance() view returns (uint256)',
+  'function creatorTaxBalance() view returns (uint256)',
+])
+
+export const ponsHookAbi = parseAbi([
+  'function pendingFees(bytes32 poolId) view returns (uint256)',
+  'function pendingCreatorTax(bytes32 poolId) view returns (uint256)',
 ])

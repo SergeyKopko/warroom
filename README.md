@@ -96,7 +96,7 @@ Server-only variables have no `VITE_` prefix. Vite intentionally embeds only the
 | `UPSTASH_REDIS_REST_TOKEN` | production | Upstash token; server only |
 | `ALLOWED_ORIGINS` | production | Comma-separated exact origins allowed by CORS |
 
-Contract tooling also accepts the public `WAR_TOKEN_ADDRESS`, `TREASURY_ADDRESS`, `ADMIN_ADDRESS`, `PONS_FEE_ESCROW` and `PLTR_TOKEN_ADDRESS`. `WAR_TOKEN_ADDRESS` is currently set to the real Robinhood Chain ERC-20 supplied for this stage, `0x48a9E2ec1EaD16C709e1187ac13e7434f9B21a16`; the UI intentionally calls it WAR. Replace only this address when the final WAR contract is ready. No private key is read, stored or required by the application or indexer.
+Contract tooling also accepts the public `WAR_TOKEN_ADDRESS`, `TREASURY_ADDRESS`, `ADMIN_ADDRESS`, `PONS_FEE_ESCROW` and `PLTR_TOKEN_ADDRESS`. The configured final WAR address is `0x40B9d2ea197d61A4F3025e1bdafcf8d3b3BD7fA1`, and the UI displays it as WAR. Before deploying `WarroomGame`, verify that ERC-20 contract code is live at this address. No private key is read, stored or required by the application or indexer.
 
 Verify the configured token's read-only ERC-20 interface and required 18 decimals with `pnpm token:verify`. This sends no transaction and requests no wallet signature.
 
@@ -169,7 +169,8 @@ For the current Robinhood mainnet deployment, pass the configured `WAR_TOKEN_ADD
 Official values already present in contract configuration:
 
 - Robinhood Chain: `4663`
-- WarroomGame: `0xE0061A192b93546BeC4A2f4Da41E7E0fB344780d` (deployed at block `61815288`)
+- WarroomGame / Commander NFT collection: `0xCfe3A6b3CF713FEc098A4c4EA049Baef07ca411a` (deployed at block `62930258`)
+- WAR: `0x40B9d2ea197d61A4F3025e1bdafcf8d3b3BD7fA1`
 - PLTR Robinhood Token: `0x894E1EC2D74FFE5AEF8Dc8A9e84686acCB964F2A`
 - Pons V2 Fee Escrow: `0xd3AFEB2a57f70eF218Aa82451c51B2fb0416Ac9e`
 
@@ -195,4 +196,4 @@ pnpm build
 
 The 26 tests cover all eight indexed event decoders, deduplication, pending replacement, cursor pagination/filter validation, checkpoint continuation, reorg rewind, realtime reconnect/catch-up, walletless Activity, realtime-to-polling fallback, complete reward-round pagination, and local EVM integration for NFT minting, mint-more, free/extra launches, rank spending/weight, cooldown, Pons fee pulling, PLTR claims, and exact 50/50 WAR burn/treasury splits.
 
-Current live smoke-check (read-only, Robinhood Chain): WarroomGame is deployed at block `61815288`; eight Commander NFTs, eleven launches, two successful Captain upgrades and `680,000 WAR` burned were observed while this revision was prepared. No private key or backend signer was used.
+Current live smoke-check (read-only, Robinhood Chain): the fresh WarroomGame / Commander NFT collection is deployed at block `62930258` with a maximum supply of `1,200`, `200,000` target HP, final WAR and treasury addresses, and zero Commanders minted at deployment. No private key or backend signer was used.

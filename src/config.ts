@@ -20,9 +20,14 @@ export const CONTRACTS = {
     ? getAddress(__WAR_TOKEN_ADDRESS__)
     : zeroAddress,
   pltr: getAddress('0x894E1EC2D74FFE5AEF8Dc8A9e84686acCB964F2A'),
+  treasure: getAddress('0x70f7ff0ad89bb0e3ca425d6bc4ab07df96e6d165'),
+  /** Live WAR launch on Pons V2 (quote = PLTR). */
+  warLaunch: getAddress('0x40B9d2ea197d61A4F3025e1bdafcf8d3b3BD7fA1'),
   ponsFeeEscrow: getAddress('0xd3AFEB2a57f70eF218Aa82451c51B2fb0416Ac9e'),
   ponsV2Factory: getAddress('0x7eD598BcEf8bd9Edd8C97A195C6d13f40801EC7e'),
 } as const
+
+export const PONS_LAUNCHPAD_URL = `https://www.ponsfamily.com/launchpad/${CONTRACTS.warLaunch}`
 
 export const EXPLORER = robinhood.blockExplorers.default.url
 export const isConfigured = CONTRACTS.game !== zeroAddress

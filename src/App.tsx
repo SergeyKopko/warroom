@@ -24,7 +24,7 @@ import { useWarroom } from './useWarroom'
 import { destroyedPercent } from './shared/target'
 
 const PAIR = 'WAR / PLTR'
-const X_URL = 'https://x.com'
+const X_URL = 'https://x.com/warroomrh'
 
 type View = Screen | 'landing'
 
@@ -37,7 +37,7 @@ const navigation: Array<{ id: Screen; label: string }> = [
   { id: 'docs', label: 'Docs' },
 ]
 
-const WAR_MARKET = 'https://gmgn.ai/robinhood/token/0x48a9e2ec1ead16c709e1187ac13e7434f9b21a16'
+const WAR_MARKET = 'https://gmgn.ai/robinhood/token/0x40B9d2ea197d61A4F3025e1bdafcf8d3b3BD7fA1'
 
 function XIcon() {
   return <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.9 2H22l-7 8 8.2 12h-6.4l-5-7.3L5.9 22H2.8l7.5-8.6L2.4 2h6.6l4.5 6.7L18.9 2Zm-1.1 18h1.7L7.3 3.8H5.5L17.8 20Z" /></svg>
@@ -808,7 +808,7 @@ function ProtocolContracts() {
   const rows = [
     { key: 'NFT', name: 'Commander NFT — collection', addr: CONTRACTS.game, note: '1,200 max · no wallet limit · progress follows the NFT' },
     { key: 'Token', name: 'WAR token', addr: CONTRACTS.war, note: 'Fixed supply 1,000,000,000 · spent to play · 50% burned' },
-    { key: 'Rewards', name: 'Reward pool', addr: CONTRACTS.pltr, note: 'Trading fees in · claimable rewards out' },
+    { key: 'Treasure', name: 'Treasure', addr: CONTRACTS.treasure, note: 'Trading fees in · claimable rewards out' },
   ] as const
   const copy = async (value: string) => {
     try { await navigator.clipboard.writeText(value) } catch { /* ignore */ }

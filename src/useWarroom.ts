@@ -9,7 +9,7 @@ import {
   http,
   type Address,
 } from 'viem'
-import { gameAbi, erc20Abi } from './abi'
+import { gameAbi, erc20Abi, ponsCurveAbi, ponsEscrowAbi, ponsFactoryAbi } from './abi'
 import {
   CONTRACTS,
   EXTRA_SHOT_PRICE,
@@ -37,6 +37,55 @@ const now = () => Math.floor(Date.now() / 1000)
 async function readWalletWarBalance(account: Address) {
   if (!isWarConfigured) return undefined
   return publicClient.readContract({ address: CONTRACTS.war, abi: erc20Abi, functionName: 'balanceOf', args: [account] })
+}
+
+function isNativePair(address: Address) {
+  return address === '0x0000000000000000000000000000000000000000'
+}
+
+/**
+ * Pons V2 creator rewards for the WAR/PLTR launch.
+ * Escrow alone understates the pool — pre-graduation fees sit on the curve until sweep.
+ * @see https://docs.ponsfamily.com/v2#claiming
+ */
+async function readPonsRewardsPool(): Promise<bigint> {
+  try {
+    const launch = await publicClient.readContract({
+      address: CONTRACTS.ponsV2Factory,
+      abi: ponsFactoryAbi,
+      functionName: 'getLaunchedToken',
+      args: [CONTRACTS.warLaunch],
+    })
+    if (!launch.exists) return 0n
+
+    const creator = launch.creatorFeeRecipient
+    const escrowed = isNativePair(launch.pairToken)
+      ? await publicClient.readContract({
+        address: CONTRACTS.ponsFeeEscrow,
+        abi: ponsEscrowAbi,
+        functionName: 'balanceOf',
+        args: [creator],
+      })
+      : await publicClient.readContract({
+        address: CONTRACTS.ponsFeeEscrow,
+        abi: ponsEscrowAbi,
+        functionName: 'balanceOfToken',
+        args: [creator, launch.pairToken],
+      })
+
+    // phase 0 = still on bonding curve — include unswept creator position
+    if (launch.phase === 0) {
+      const [quoteFees, creatorTax] = await Promise.all([
+        publicClient.readContract({ address: launch.curve, abi: ponsCurveAbi, functionName: 'quoteFeeBalance' }),
+        publicClient.readContract({ address: launch.curve, abi: ponsCurveAbi, functionName: 'creatorTaxBalance' }),
+      ])
+      return escrowed + quoteFees + creatorTax
+    }
+
+    return escrowed
+  } catch {
+    return 0n
+  }
 }
 
 function newCommander(id: bigint): Commander {
@@ -165,7 +214,7 @@ async function loadPublicChainSnapshot(): Promise<Partial<GameSnapshot> | undefi
     game.read.currentRoundId(),
     game.read.currentRoundEndsAt(),
     game.read.currentRoundWeight(),
-    game.read.creatorFeesAvailable(),
+    readPonsRewardsPool(),
     Promise.all([0, 1, 2, 3, 4].map((rank) => game.read.rankPopulation([rank]))),
   ])
   return {
@@ -317,7 +366,7 @@ export function useWarroom() {
         game.read.currentRoundId(),
         game.read.currentRoundEndsAt(),
         game.read.currentRoundWeight(),
-        game.read.creatorFeesAvailable(),
+        readPonsRewardsPool(),
       ])
       const [warBalance, pltrBalance, allowance, rawCommanders, rankPopulationRaw] = await Promise.all([
         publicClient.readContract({ address: warAddress, abi: erc20Abi, functionName: 'balanceOf', args: [account] }),
@@ -710,6 +759,18 @@ export function useWarroom() {
     const timer = window.setInterval(() => void refresh(accountRef.current), 15_000)
     return () => window.clearInterval(timer)
   }, [refresh, state.connected])
+
+  useEffect(() => {
+    if (!isConfigured || !state.ready || state.connected) return
+    const tick = () => {
+      void loadPublicChainSnapshot().then((snap) => {
+        if (!snap) return
+        setState((current) => ({ ...current, ...snap }))
+      })
+    }
+    const timer = window.setInterval(tick, 15_000)
+    return () => window.clearInterval(timer)
+  }, [state.ready, state.connected])
 
   return { state, selected, actions }
 }
